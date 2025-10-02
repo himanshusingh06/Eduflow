@@ -176,13 +176,13 @@ class ChatMessageCreate(BaseModel):
 # ============= UTILITY FUNCTIONS =============
 
 def hash_password(password: str) -> str:
-    # Truncate password to 72 bytes for bcrypt compatibility
-    if len(password.encode('utf-8')) > 72:
-        password = password.encode('utf-8')[:72].decode('utf-8', errors='ignore')
-    return pwd_context.hash(password)
+    # Using SHA256 with salt for password hashing
+    salted_password = password + PASSWORD_SALT
+    return hashlib.sha256(salted_password.encode('utf-8')).hexdigest()
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    # Verify password by hashing the plain password and comparing
+    return hash_password(plain_password) == hashed_password
 
 def create_access_token(data: dict):
     to_encode = data.copy()
