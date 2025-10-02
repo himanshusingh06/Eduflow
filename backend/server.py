@@ -25,10 +25,12 @@ db = client[os.environ['DB_NAME']]
 
 # Security
 security = HTTPBearer()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Using SHA256 + salt for simplicity instead of bcrypt
+import hashlib
 JWT_SECRET = os.environ.get("JWT_SECRET_KEY")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_TIME = timedelta(days=7)
+PASSWORD_SALT = "eduagent_salt_2024"
 
 # AI Integration
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
