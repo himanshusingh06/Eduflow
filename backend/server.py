@@ -41,7 +41,8 @@ api_router = APIRouter(prefix="/api")
 
 # ============= MODELS =============
 
-class UserRole(BaseModel):
+# User Roles Constants
+class UserRoles:
     STUDENT = "student"
     TEACHER = "teacher"
     PARENT = "parent"
