@@ -11,7 +11,6 @@ from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timedelta
 import jwt
-from passlib.context import CryptContext
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 import json
 
