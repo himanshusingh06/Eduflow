@@ -2261,7 +2261,7 @@ const StudentProfile = () => {
   const saveProfile = async () => {
     setLoading(true);
     try {
-      await axios.post('/api/student/profile', profile);
+      await axios.post('/student/profile', profile);
       toast.success('Profile saved successfully!');
       setIsEditing(false);
     } catch (error) {
