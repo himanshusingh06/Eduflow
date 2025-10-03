@@ -791,7 +791,7 @@ const QuizSystem = () => {
 
   const fetchQuizzes = async () => {
     try {
-      const response = await axios.get('/api/quiz/list');
+      const response = await axios.get('/quiz/list');
       setQuizzes(response.data || []);
     } catch (error) {
       console.error('Quiz fetch error:', error);
