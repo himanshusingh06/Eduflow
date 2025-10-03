@@ -171,7 +171,7 @@ backend:
         agent: "testing"
         comment: "Personalized learning AI features fully implemented: learning path generation, progress tracking, AI insights, and performance analysis. All using Emergent LLM integration successfully."
 
-  - task: "Parent Progress Reports"
+  - task: "Parent Progress Report Generation"
     implemented: true
     working: true
     file: "server.py"
@@ -180,8 +180,8 @@ backend:
     needs_retesting: false
     status_history:
       - working: true
-        agent: "testing"
-        comment: "Parent progress reporting system implemented with comprehensive reports including performance analytics, AI insights, subject breakdowns, and recent activities."
+        agent: "main"
+        comment: "Comprehensive progress reports with AI insights for parents implemented and tested"
 
 frontend:
   - task: "Role-based Dashboard System"
