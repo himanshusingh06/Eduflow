@@ -1398,6 +1398,259 @@ async def handle_order_completion(order_entity: dict):
     except Exception as e:
         logging.error(f"Error processing order completion: {e}")
 
+# ============= NEW AI FUNCTIONS =============
+
+async def analyze_quiz_result(student_id: str, quiz_id: str, attempt_id: str) -> QuizAnalysis:
+    """Agentic AI workflow to analyze quiz results and provide insights"""
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        # Get quiz attempt details
+        attempt = await db.quiz_attempts.find_one({"id": attempt_id})
+        quiz = await db.quizzes.find_one({"id": quiz_id})
+        
+        if not attempt or not quiz:
+            raise ValueError("Quiz attempt or quiz not found")
+        
+        # Get student's previous attempts for trend analysis
+        previous_attempts = await db.quiz_attempts.find({
+            "student_id": student_id,
+            "completed_at": {"$lt": attempt["completed_at"]}
+        }).sort("completed_at", -1).to_list(10)
+        
+        # Analyze wrong answers
+        wrong_questions = []
+        for q_idx, selected_option in attempt["answers"].items():
+            if int(q_idx) < len(quiz["questions"]):
+                question = quiz["questions"][int(q_idx)]
+                if question["correct_answer"] != selected_option:
+                    wrong_questions.append({
+                        "question": question["question"],
+                        "selected": question["options"][selected_option],
+                        "correct": question["options"][question["correct_answer"]],
+                        "explanation": question["explanation"]
+                    })
+        
+        # Calculate trend
+        scores = [att["percentage"] for att in previous_attempts[-5:]] + [attempt["percentage"]]
+        trend = "improving" if len(scores) > 1 and scores[-1] > scores[-2] else "stable"
+        if len(scores) >= 3:
+            if all(scores[i] < scores[i+1] for i in range(len(scores)-2)):
+                trend = "improving"
+            elif all(scores[i] > scores[i+1] for i in range(len(scores)-2)):
+                trend = "declining"
+        
+        # Generate AI analysis
+        prompt = f"""Analyze this student's quiz performance:
+
+Quiz: {quiz['title']} ({quiz['subject']})
+Score: {attempt['percentage']:.1f}% ({attempt['score']}/{attempt['total_marks']})
+Previous 5 scores: {[att['percentage'] for att in previous_attempts[:5]]}
+
+Wrong Answers Analysis:
+{json.dumps(wrong_questions, indent=2)}
+
+Provide JSON analysis:
+{{
+  "performance_summary": "brief summary of performance",
+  "key_insights": ["insight1", "insight2", "insight3"],
+  "recommendations": ["action1", "action2", "action3"],
+  "concept_gaps": ["concept1", "concept2"],
+  "study_focus": ["topic1", "topic2", "topic3"]
+}}"""
+
+        response = model.generate_content(prompt)
+        
+        # Parse AI analysis
+        try:
+            import re
+            json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+            if json_match:
+                analysis_data = json.loads(json_match.group())
+            else:
+                analysis_data = {
+                    "performance_summary": f"Scored {attempt['percentage']:.1f}% on {quiz['title']}",
+                    "key_insights": ["Analysis completed", "Performance tracked"],
+                    "recommendations": ["Review incorrect answers", "Practice similar questions"],
+                    "concept_gaps": ["Review concepts"],
+                    "study_focus": ["Continue practice"]
+                }
+        except:
+            analysis_data = {
+                "performance_summary": f"Scored {attempt['percentage']:.1f}% on {quiz['title']}",
+                "key_insights": ["Analysis completed"],
+                "recommendations": ["Review and practice"],
+                "concept_gaps": ["General review needed"],
+                "study_focus": ["Practice more questions"]
+            }
+        
+        # Create quiz analysis record
+        quiz_analysis = QuizAnalysis(
+            student_id=student_id,
+            quiz_id=quiz_id,
+            attempt_id=attempt_id,
+            analysis_data=analysis_data,
+            insights=analysis_data.get("key_insights", []),
+            recommendations=analysis_data.get("recommendations", []),
+            performance_trend=trend
+        )
+        
+        # Save analysis to database
+        await db.quiz_analysis.insert_one(quiz_analysis.dict())
+        
+        return quiz_analysis
+        
+    except Exception as e:
+        logging.error(f"Quiz analysis error: {e}")
+        # Return basic analysis
+        return QuizAnalysis(
+            student_id=student_id,
+            quiz_id=quiz_id,
+            attempt_id=attempt_id,
+            analysis_data={"error": "Analysis failed"},
+            insights=["Quiz completed successfully"],
+            recommendations=["Continue practicing"],
+            performance_trend="stable"
+        )
+
+async def extract_text_from_pdf(file_content: bytes) -> List[str]:
+    """Extract text from PDF file"""
+    try:
+        pdf_file = io.BytesIO(file_content)
+        pdf_reader = PyPDF2.PdfReader(pdf_file)
+        
+        pages_text = []
+        for page_num in range(len(pdf_reader.pages)):
+            page = pdf_reader.pages[page_num]
+            text = page.extract_text()
+            pages_text.append(text)
+        
+        return pages_text
+    except Exception as e:
+        logging.error(f"PDF extraction error: {e}")
+        return []
+
+async def create_rag_embeddings(material_id: str, pages_text: List[str]):
+    """Create embeddings for RAG system"""
+    try:
+        collection_name = f"material_{material_id}"
+        
+        try:
+            collection = chroma_client.get_collection(collection_name)
+        except:
+            collection = chroma_client.create_collection(collection_name)
+        
+        # Create embeddings for each page
+        for page_num, text in enumerate(pages_text):
+            if text.strip():  # Only process non-empty pages
+                # Generate embedding
+                embedding = sentence_model.encode(text)
+                
+                # Add to vector database
+                collection.add(
+                    embeddings=[embedding.tolist()],
+                    documents=[text],
+                    metadatas=[{"page_number": page_num, "material_id": material_id}],
+                    ids=[f"{material_id}_page_{page_num}"]
+                )
+                
+                # Store document record
+                rag_doc = RAGDocument(
+                    material_id=material_id,
+                    content=text,
+                    page_number=page_num,
+                    embedding_id=f"{material_id}_page_{page_num}"
+                )
+                await db.rag_documents.insert_one(rag_doc.dict())
+        
+        return True
+    except Exception as e:
+        logging.error(f"RAG embedding error: {e}")
+        return False
+
+async def query_rag_system(question: str, subject: str = None, grade_level: str = None) -> str:
+    """Query RAG system for course-related answers"""
+    try:
+        # Get all relevant collections
+        collections = chroma_client.list_collections()
+        
+        if not collections:
+            return "No study materials have been uploaded yet. Please ask your teacher to upload course materials."
+        
+        # Generate query embedding
+        query_embedding = sentence_model.encode(question)
+        
+        # Search across all material collections
+        all_results = []
+        for collection in collections:
+            try:
+                results = collection.query(
+                    query_embeddings=[query_embedding.tolist()],
+                    n_results=3
+                )
+                if results['documents']:
+                    all_results.extend(results['documents'][0])
+            except:
+                continue
+        
+        if not all_results:
+            return "I couldn't find relevant information in the uploaded materials. Please try a different question."
+        
+        # Use Gemini to generate answer based on retrieved context
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        context = "\n\n".join(all_results[:3])  # Use top 3 results
+        
+        prompt = f"""Based on the following course materials, answer the student's question:
+
+Course Materials Context:
+{context}
+
+Student Question: {question}
+
+Please provide a clear, educational answer based on the course materials. If the materials don't contain enough information, mention that and provide what you can. Make the answer appropriate for {grade_level or 'general'} level in {subject or 'the subject'}."""
+
+        response = model.generate_content(prompt)
+        return response.text
+        
+    except Exception as e:
+        logging.error(f"RAG query error: {e}")
+        return "I'm having trouble accessing the course materials right now. Please try again later."
+
+async def summarize_notes(note_content: str, summary_type: str = "brief") -> str:
+    """Summarize student notes using Gemini AI"""
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        if summary_type == "brief":
+            prompt = f"""Please create a brief summary of these student notes (2-3 bullet points):
+
+Notes:
+{note_content}
+
+Summary:"""
+        elif summary_type == "detailed":
+            prompt = f"""Please create a detailed summary of these student notes with key concepts and important details:
+
+Notes:
+{note_content}
+
+Detailed Summary:"""
+        else:  # key_points
+            prompt = f"""Extract and list the key points from these student notes:
+
+Notes:
+{note_content}
+
+Key Points:"""
+
+        response = model.generate_content(prompt)
+        return response.text
+        
+    except Exception as e:
+        logging.error(f"Note summarization error: {e}")
+        return "Failed to summarize notes. Please try again."
+
 @api_router.get("/my-subscription")
 async def get_my_subscription(current_user: User = Depends(get_current_user)):
     """Get current user's subscription"""
