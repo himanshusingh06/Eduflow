@@ -434,18 +434,22 @@ Generate {num_questions} questions now:"""
 async def answer_question(question: str, subject: str, grade_level: str = "general") -> str:
     """Generate AI answer for student question"""
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"qa_{uuid.uuid4()}",
-            system_message=f"You are a helpful tutor answering questions for students. Provide clear, educational answers appropriate for {grade_level} level in {subject}."
-        ).with_model("gemini", "gemini-2.5-pro")
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
-        user_message = UserMessage(
-            text=f"Please answer this {subject} question clearly and educationally: {question}"
-        )
-        
-        response = await chat.send_message(user_message)
-        return response
+        prompt = f"""You are a helpful tutor answering questions for {grade_level} students in {subject}.
+
+Question: {question}
+
+Please provide a clear, educational answer that is:
+1. Appropriate for {grade_level} level understanding
+2. Accurate and well-explained
+3. Includes examples when helpful
+4. Encourages further learning
+
+Answer:"""
+
+        response = model.generate_content(prompt)
+        return response.text
     except Exception as e:
         logging.error(f"AI answer generation error: {e}")
         return "I'm having trouble generating an answer right now. Please try again or consult your teacher."
