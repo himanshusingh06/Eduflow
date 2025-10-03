@@ -193,6 +193,7 @@ const Sidebar = ({ activeTab, setActiveTab, user, isMobileOpen, setIsMobileOpen 
         ...commonItems,
         { id: 'create-content', label: 'Create Content', icon: BookOpen },
         { id: 'create-quiz', label: 'Create Quiz', icon: PenTool },
+        { id: 'upload-materials', label: 'Upload Materials', icon: Upload },
         { id: 'students', label: 'Students', icon: Users },
       ];
     }
