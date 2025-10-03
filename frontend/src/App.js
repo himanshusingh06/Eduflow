@@ -2831,6 +2831,8 @@ const Dashboard = () => {
         return <SubscriptionManagement />;
       case 'learning-path':
         return <PersonalizedLearning />;
+      case 'profile':
+        return <StudentProfile />;
       case 'notes':
         return <NotesManager />;
       case 'upload-materials':
