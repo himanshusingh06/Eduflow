@@ -1217,6 +1217,7 @@ async def update_learning_progress(
 ):
     """Update learning progress when student completes a topic"""
     try:
+        completed_topic = progress_data.completed_topic
         # Update learning path
         await db.learning_paths.update_one(
             {"student_id": current_user.id},
