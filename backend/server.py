@@ -848,6 +848,13 @@ async def submit_quiz_attempt(
     # Save attempt
     await db.quiz_attempts.insert_one(attempt.dict())
     
+    # Trigger AI analysis asynchronously
+    try:
+        await analyze_quiz_result(current_user.id, quiz_id, attempt.id)
+    except Exception as e:
+        logging.error(f"Quiz analysis failed: {e}")
+        # Don't fail the quiz submission if analysis fails
+    
     return attempt
 
 # ============= Q&A ROUTES =============
