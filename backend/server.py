@@ -1915,6 +1915,10 @@ async def get_quiz_analysis(
             )
             analysis = quiz_analysis.dict()
         
+        # Clean ObjectId from response
+        if isinstance(analysis, dict) and "_id" in analysis:
+            del analysis["_id"]
+        
         return analysis
         
     except Exception as e:
