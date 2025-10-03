@@ -1227,14 +1227,30 @@ const AskAI = () => {
                   : 'bg-blue-50 border-l-4 border-blue-500'
               }`}>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium text-sm text-gray-600">
-                    {msg.type === 'question' ? 'Your Question:' : 'AI Answer:'}
-                  </span>
+                  <div className="flex items-center space-x-2">
+                    <span className="font-medium text-sm text-gray-600">
+                      {msg.type === 'question' ? 'Your Question:' : 'AI Answer:'}
+                    </span>
+                    {msg.type === 'question' && (
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        msg.queryType === 'rag' 
+                          ? 'bg-purple-100 text-purple-800' 
+                          : 'bg-green-100 text-green-800'
+                      }`}>
+                        {msg.queryType === 'rag' ? 'Course Materials' : 'AI Tutor'}
+                      </span>
+                    )}
+                    {msg.type === 'answer' && msg.source && (
+                      <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-800">
+                        {msg.source === 'course_materials' ? '📄 Course Materials' : '🤖 AI Tutor'}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-xs text-gray-500">
                     {msg.timestamp.toLocaleTimeString()}
                   </span>
                 </div>
-                <p className="text-gray-800">{msg.text}</p>
+                <p className="text-gray-800 whitespace-pre-wrap">{msg.text}</p>
               </div>
             ))}
           </div>
