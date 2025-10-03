@@ -1853,7 +1853,7 @@ async def create_note(
         
         await db.student_notes.insert_one(note.dict())
         
-        return {"success": True, "note_id": note.id, "message": "Note created successfully"}
+        return {"success": True, "id": note.id, "message": "Note created successfully"}
         
     except Exception as e:
         logging.error(f"Note creation error: {e}")
