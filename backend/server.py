@@ -984,11 +984,363 @@ async def get_parent_dashboard(current_user: User = Depends(get_current_user)):
         "student_progress": student_progress
     }
 
+# ============= PAYMENT ROUTES =============
+
+@api_router.get("/subscription-plans")
+async def get_subscription_plans():
+    """Get available subscription plans"""
+    plans = [
+        {
+            "id": "monthly_premium",
+            "name": "Monthly Premium Access",
+            "description": "Full access to all courses, quizzes, and AI tutoring",
+            "monthly_amount": 100000,  # Rs 1000 in paise
+            "price_display": "₹1,000/month",
+            "features": [
+                "Unlimited access to all courses",
+                "Personalized AI tutoring",
+                "Advanced quiz analytics", 
+                "Progress tracking",
+                "Priority support"
+            ],
+            "is_active": True
+        }
+    ]
+    return {"plans": plans}
+
+@api_router.post("/create-payment")
+async def create_payment(
+    payment_request: PaymentRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Create a one-time payment"""
+    try:
+        # Generate transaction ID
+        transaction_id = f"PAY_{current_user.id}_{uuid.uuid4().hex[:8]}"
+        
+        # Mock PhonePe payment creation
+        phonepe_data = {
+            "merchant_transaction_id": transaction_id,
+            "amount": payment_request.amount,
+            "merchant_user_id": current_user.id
+        }
+        
+        response = phonepe_mock_client.create_payment(phonepe_data)
+        
+        # Store payment record
+        payment_record = PaymentRecord(
+            transaction_id=transaction_id,
+            student_id=current_user.id,
+            amount=payment_request.amount,
+            payment_type=payment_request.payment_type,
+            status="INITIATED",
+            description=payment_request.description,
+            phonepe_order_id=response["data"]["order_id"]
+        )
+        
+        await db.payments.insert_one(payment_record.dict())
+        
+        return {
+            "success": True,
+            "transaction_id": transaction_id,
+            "payment_url": response["data"]["redirect_url"],
+            "message": "Payment initiated successfully"
+        }
+        
+    except Exception as e:
+        logging.error(f"Payment creation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Payment creation failed: {str(e)}")
+
+@api_router.post("/create-subscription")
+async def create_subscription(
+    subscription_request: SubscriptionRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Create a subscription"""
+    try:
+        # Get subscription plan
+        plans = await get_subscription_plans()
+        plan = next((p for p in plans["plans"] if p["id"] == subscription_request.plan_id), None)
+        if not plan:
+            raise HTTPException(status_code=404, detail="Subscription plan not found")
+        
+        # Generate subscription ID
+        subscription_id = f"SUB_{current_user.id}_{uuid.uuid4().hex[:8]}"
+        
+        # Mock PhonePe subscription creation
+        phonepe_data = {
+            "merchant_subscription_id": subscription_id,
+            "amount": plan["monthly_amount"],
+            "merchant_user_id": current_user.id
+        }
+        
+        response = phonepe_mock_client.create_subscription(phonepe_data)
+        
+        # Store subscription record
+        start_date = datetime.utcnow()
+        end_date = start_date + timedelta(days=30 * subscription_request.duration_months)
+        
+        subscription = Subscription(
+            id=subscription_id,
+            student_id=current_user.id,
+            plan_id=subscription_request.plan_id,
+            status="PENDING",
+            start_date=start_date,
+            end_date=end_date,
+            monthly_amount=plan["monthly_amount"]
+        )
+        
+        await db.subscriptions.insert_one(subscription.dict())
+        
+        return {
+            "success": True,
+            "subscription_id": subscription_id,
+            "mandate_url": response["data"]["redirect_url"],
+            "message": "Subscription mandate created successfully"
+        }
+        
+    except Exception as e:
+        logging.error(f"Subscription creation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Subscription creation failed: {str(e)}")
+
+@api_router.get("/payment-status/{transaction_id}")
+async def get_payment_status(
+    transaction_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get payment status"""
+    try:
+        # Get payment record from database
+        payment_record = await db.payments.find_one({"transaction_id": transaction_id})
+        if not payment_record:
+            raise HTTPException(status_code=404, detail="Payment not found")
+        
+        # Check with PhonePe (mock)
+        phonepe_status = phonepe_mock_client.get_payment_status(transaction_id)
+        
+        return {
+            "transaction_id": transaction_id,
+            "status": payment_record["status"],
+            "amount": payment_record["amount"],
+            "created_at": payment_record["created_at"],
+            "phonepe_status": phonepe_status
+        }
+        
+    except Exception as e:
+        logging.error(f"Payment status check error: {e}")
+        raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
+
+@api_router.get("/my-subscription")
+async def get_my_subscription(current_user: User = Depends(get_current_user)):
+    """Get current user's subscription"""
+    try:
+        subscription = await db.subscriptions.find_one(
+            {"student_id": current_user.id, "status": {"$in": ["ACTIVE", "PENDING"]}}
+        )
+        
+        if not subscription:
+            return {"has_subscription": False, "message": "No active subscription"}
+        
+        return {
+            "has_subscription": True,
+            "subscription": subscription,
+            "expires_at": subscription["end_date"],
+            "is_active": subscription["status"] == "ACTIVE"
+        }
+        
+    except Exception as e:
+        logging.error(f"Subscription check error: {e}")
+        return {"has_subscription": False, "error": str(e)}
+
+# Mock payment success endpoint (for testing)
+@api_router.get("/mock-payment/{transaction_id}")
+async def mock_payment_success(transaction_id: str):
+    """Mock payment success page for testing"""
+    try:
+        # Update payment status
+        await db.payments.update_one(
+            {"transaction_id": transaction_id},
+            {"$set": {"status": "SUCCESS", "updated_at": datetime.utcnow()}}
+        )
+        
+        return {"message": "Payment completed successfully", "transaction_id": transaction_id}
+    except Exception as e:
+        logging.error(f"Mock payment error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/mock-mandate/{subscription_id}")
+async def mock_mandate_success(subscription_id: str):
+    """Mock subscription mandate success for testing"""
+    try:
+        # Update subscription status
+        await db.subscriptions.update_one(
+            {"id": subscription_id},
+            {"$set": {"status": "ACTIVE", "updated_at": datetime.utcnow()}}
+        )
+        
+        return {"message": "Subscription activated successfully", "subscription_id": subscription_id}
+    except Exception as e:
+        logging.error(f"Mock mandate error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============= PERSONALIZED LEARNING ROUTES =============
+
+@api_router.get("/learning-path")
+async def get_learning_path(current_user: User = Depends(get_current_user)):
+    """Get personalized learning path for student"""
+    try:
+        # Check for existing learning path
+        existing_path = await db.learning_paths.find_one({"student_id": current_user.id})
+        
+        if existing_path:
+            return LearningPath(**existing_path)
+        
+        # Generate new learning path
+        learning_path = await generate_personalized_learning_path(current_user.id)
+        
+        # Save to database
+        await db.learning_paths.insert_one(learning_path.dict())
+        
+        return learning_path
+        
+    except Exception as e:
+        logging.error(f"Learning path error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate learning path: {str(e)}")
+
+@api_router.post("/update-learning-progress")
+async def update_learning_progress(
+    completed_topic: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Update learning progress when student completes a topic"""
+    try:
+        # Update learning path
+        await db.learning_paths.update_one(
+            {"student_id": current_user.id},
+            {
+                "$addToSet": {"completed_topics": completed_topic},
+                "$set": {"updated_at": datetime.utcnow()}
+            },
+            upsert=True
+        )
+        
+        # Generate new recommendations
+        learning_path = await generate_personalized_learning_path(current_user.id)
+        
+        # Update with new recommendations
+        await db.learning_paths.update_one(
+            {"student_id": current_user.id},
+            {"$set": learning_path.dict()}
+        )
+        
+        return {"message": "Learning progress updated", "next_recommendations": learning_path.next_recommendations}
+        
+    except Exception as e:
+        logging.error(f"Learning progress update error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/learning-insights")
+async def get_learning_insights(current_user: User = Depends(get_current_user)):
+    """Get AI-generated learning insights for student"""
+    try:
+        # Get recent performance
+        recent_attempts = await db.quiz_attempts.find({"student_id": current_user.id}).sort("completed_at", -1).to_list(10)
+        
+        if not recent_attempts:
+            return {"insights": [], "message": "Take some quizzes to get personalized insights"}
+        
+        # Generate insights
+        insights = []
+        
+        # Performance trend insight
+        if len(recent_attempts) >= 3:
+            recent_scores = [attempt["percentage"] for attempt in recent_attempts[:3]]
+            if all(recent_scores[i] >= recent_scores[i+1] for i in range(len(recent_scores)-1)):
+                insights.append({
+                    "type": "achievement",
+                    "title": "Improving Performance!",
+                    "description": "Your quiz scores are consistently improving. Keep up the great work!",
+                    "priority": "high"
+                })
+        
+        # Subject strength insight
+        subject_performance = {}
+        for attempt in recent_attempts:
+            quiz = await db.quizzes.find_one({"id": attempt["quiz_id"]})
+            if quiz:
+                subject = quiz["subject"]
+                if subject not in subject_performance:
+                    subject_performance[subject] = []
+                subject_performance[subject].append(attempt["percentage"])
+        
+        for subject, scores in subject_performance.items():
+            avg_score = sum(scores) / len(scores)
+            if avg_score >= 85:
+                insights.append({
+                    "type": "performance",
+                    "title": f"Strong in {subject}",
+                    "description": f"You're excelling in {subject} with an average of {avg_score:.1f}%!",
+                    "priority": "medium"
+                })
+            elif avg_score < 60:
+                insights.append({
+                    "type": "recommendation",
+                    "title": f"Focus on {subject}",
+                    "description": f"Consider spending more time on {subject}. Practice makes perfect!",
+                    "priority": "high",
+                    "action_required": True
+                })
+        
+        return {"insights": insights}
+        
+    except Exception as e:
+        logging.error(f"Learning insights error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============= PARENT PROGRESS ROUTES =============
+
+@api_router.get("/parent/progress-report/{student_id}")
+async def get_student_progress_report(
+    student_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get comprehensive progress report for parents"""
+    try:
+        # Verify parent access (in real app, you'd have proper parent-child linking)
+        if current_user.role != "parent":
+            raise HTTPException(status_code=403, detail="Parent access required")
+        
+        # Generate progress report
+        report = await generate_progress_report(student_id, current_user.id)
+        
+        return report
+        
+    except Exception as e:
+        logging.error(f"Progress report error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/parent/students")
+async def get_linked_students(current_user: User = Depends(get_current_user)):
+    """Get students linked to parent account"""
+    try:
+        if current_user.role != "parent":
+            raise HTTPException(status_code=403, detail="Parent access required")
+        
+        # For demo purposes, return all students
+        # In real app, you'd have proper parent-child relationships
+        students = await db.users.find({"role": "student"}).to_list(100)
+        
+        return {"students": students}
+        
+    except Exception as e:
+        logging.error(f"Linked students error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ============= GENERAL ROUTES =============
 
 @api_router.get("/")
 async def root():
-    return {"message": "EduAgent API - AI Powered Educational Platform"}
+    return {"message": "EduAgent API - AI Powered Educational Platform with Payment Gateway"}
 
 @api_router.get("/subjects")
 async def get_subjects():
