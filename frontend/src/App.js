@@ -642,7 +642,7 @@ const StudyContent = () => {
   const purchaseCourse = async (courseItem) => {
     try {
       // Create payment order
-      const response = await axios.post('/api/create-order', {
+      const response = await axios.post('/create-order', {
         amount: 50000, // Rs 500 for a course
         description: `Purchase: ${courseItem.title}`,
         payment_type: 'one_time'
