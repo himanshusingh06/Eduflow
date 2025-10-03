@@ -2022,7 +2022,7 @@ const NotesManager = () => {
   const summarizeNote = async (noteContent, summaryType = 'brief') => {
     setSummarizing(true);
     try {
-      const response = await axios.post('/api/notes/summarize', {
+      const response = await axios.post('/notes/summarize', {
         note_content: noteContent,
         summary_type: summaryType
       });
