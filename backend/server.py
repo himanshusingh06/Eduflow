@@ -569,7 +569,7 @@ Format as valid JSON:
         )
 
 async def generate_progress_report(student_id: str, parent_id: str) -> dict:
-    """Generate comprehensive progress report for parents"""
+    """Generate comprehensive progress report for parents using Gemini AI"""
     try:
         # Get student information
         student = await db.users.find_one({"id": student_id})
@@ -614,19 +614,26 @@ async def generate_progress_report(student_id: str, parent_id: str) -> dict:
                 })
         
         # Generate AI insights
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"progress_report_{student_id}",
-            system_message="You are an educational progress analyst. Provide insights for parents about their child's learning progress."
-        ).with_model("gemini", "gemini-2.5-pro")
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         performance_data = f"Student: {student['name']}\nTotal Quizzes: {total_quizzes}\nAverage Score: {average_score:.1f}%\nQuestions Asked: {len(questions_asked)}"
         
-        user_message = UserMessage(
-            text=f"{performance_data}\n\nPlease provide a brief progress summary and 3 actionable recommendations for parents to help their child improve. Keep it concise and positive."
-        )
-        
-        ai_insights = await chat.send_message(user_message)
+        prompt = f"""As an educational progress analyst, analyze this student's performance data:
+
+{performance_data}
+
+Subject Performance:
+{json.dumps(subject_stats, indent=2)}
+
+Please provide:
+1. A brief, positive progress summary (2-3 sentences)
+2. 3 specific, actionable recommendations for parents to help their child improve
+3. Highlight any strengths and areas for growth
+
+Keep it encouraging and constructive for parents."""
+
+        response = model.generate_content(prompt)
+        ai_insights = response.text
         
         return {
             "student_info": {
