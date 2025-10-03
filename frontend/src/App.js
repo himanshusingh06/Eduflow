@@ -833,7 +833,7 @@ const QuizSystem = () => {
       
       // Fetch quiz analysis
       try {
-        const analysisResponse = await axios.get(`/api/quiz/analysis/${response.data.id}`);
+        const analysisResponse = await axios.get(`/quiz/analysis/${response.data.id}`);
         setQuizAnalysis(analysisResponse.data);
       } catch (analysisError) {
         console.error('Analysis fetch error:', analysisError);
