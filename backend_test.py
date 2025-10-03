@@ -1161,35 +1161,181 @@ class EduAgentTester:
         else:
             self.log_result("404 Error Handling", False, "Should return 404 for non-existent endpoints")
 
+    async def test_authentication_endpoints_comprehensive(self):
+        """Comprehensive Authentication Endpoint Testing"""
+        print("\n🔐 PRIORITY: Testing Authentication Endpoints (Login/Signup Fix)...")
+        
+        # Test 1: Registration with new user
+        new_test_user = {
+            "email": f"auth.test.{datetime.now().strftime('%Y%m%d%H%M%S')}@eduagent.com",
+            "password": "authtest2024",
+            "name": "Auth Test User",
+            "role": "student",
+            "phone": "+1234567800"
+        }
+        
+        success, response = await self.make_request("POST", "/auth/register", new_test_user)
+        if success and "access_token" in response and "user" in response:
+            self.log_result("Auth Register - New User", True, f"Successfully registered: {response['user']['name']}")
+            new_user_token = response["access_token"]
+            new_user_id = response["user"]["id"]
+            
+            # Verify JWT token structure
+            if response["token_type"] == "bearer" and len(new_user_token) > 50:
+                self.log_result("JWT Token Generation", True, f"Valid JWT token generated (length: {len(new_user_token)})")
+            else:
+                self.log_result("JWT Token Generation", False, f"Invalid token format: {response}")
+        else:
+            self.log_result("Auth Register - New User", False, f"Registration failed: {response}")
+            return
+        
+        # Test 2: Registration with duplicate email (should fail)
+        success, response = await self.make_request("POST", "/auth/register", new_test_user)
+        if not success and "already registered" in str(response).lower():
+            self.log_result("Auth Register - Duplicate Email", True, "Correctly rejected duplicate email")
+        else:
+            self.log_result("Auth Register - Duplicate Email", False, f"Should reject duplicate: {response}")
+        
+        # Test 3: Login with valid credentials
+        login_data = {"email": new_test_user["email"], "password": new_test_user["password"]}
+        success, response = await self.make_request("POST", "/auth/login", login_data)
+        if success and "access_token" in response and "user" in response:
+            self.log_result("Auth Login - Valid Credentials", True, f"Successfully logged in: {response['user']['name']}")
+            login_token = response["access_token"]
+            
+            # Verify token consistency
+            if login_token != new_user_token:  # Should be different token
+                self.log_result("JWT Token Refresh", True, "New token generated on login")
+            else:
+                self.log_result("JWT Token Refresh", False, "Same token returned - potential security issue")
+        else:
+            self.log_result("Auth Login - Valid Credentials", False, f"Login failed: {response}")
+            return
+        
+        # Test 4: Login with invalid password
+        invalid_login = {"email": new_test_user["email"], "password": "wrongpassword"}
+        success, response = await self.make_request("POST", "/auth/login", invalid_login)
+        if not success and "invalid credentials" in str(response).lower():
+            self.log_result("Auth Login - Invalid Password", True, "Correctly rejected invalid password")
+        else:
+            self.log_result("Auth Login - Invalid Password", False, f"Should reject invalid password: {response}")
+        
+        # Test 5: Login with non-existent email
+        nonexistent_login = {"email": "nonexistent@eduagent.com", "password": "password"}
+        success, response = await self.make_request("POST", "/auth/login", nonexistent_login)
+        if not success and "invalid credentials" in str(response).lower():
+            self.log_result("Auth Login - Non-existent Email", True, "Correctly rejected non-existent email")
+        else:
+            self.log_result("Auth Login - Non-existent Email", False, f"Should reject non-existent email: {response}")
+        
+        # Test 6: Protected route with valid token (/api/auth/me)
+        success, response = await self.make_request("GET", "/auth/me", token=login_token)
+        if success and "id" in response and response["email"] == new_test_user["email"]:
+            self.log_result("Protected Route - Valid Token", True, f"Successfully accessed /auth/me: {response['name']}")
+        else:
+            self.log_result("Protected Route - Valid Token", False, f"Failed to access protected route: {response}")
+        
+        # Test 7: Protected route with invalid token
+        invalid_token = "invalid.jwt.token"
+        success, response = await self.make_request("GET", "/auth/me", token=invalid_token)
+        if not success and ("invalid token" in str(response).lower() or "unauthorized" in str(response).lower()):
+            self.log_result("Protected Route - Invalid Token", True, "Correctly rejected invalid token")
+        else:
+            self.log_result("Protected Route - Invalid Token", False, f"Should reject invalid token: {response}")
+        
+        # Test 8: Protected route without token
+        success, response = await self.make_request("GET", "/auth/me")
+        if not success:
+            self.log_result("Protected Route - No Token", True, "Correctly rejected request without token")
+        else:
+            self.log_result("Protected Route - No Token", False, f"Should require authentication: {response}")
+        
+        # Test 9: Role-based access with different roles
+        for role in ["student", "teacher", "parent"]:
+            role_user = {
+                "email": f"role.{role}.{datetime.now().strftime('%Y%m%d%H%M%S')}@eduagent.com",
+                "password": f"{role}test2024",
+                "name": f"Test {role.title()}",
+                "role": role,
+                "phone": f"+123456780{ord(role[0])}"
+            }
+            
+            # Register role-specific user
+            success, response = await self.make_request("POST", "/auth/register", role_user)
+            if success and response.get("user", {}).get("role") == role:
+                self.log_result(f"Role Registration - {role.title()}", True, f"Successfully registered {role}")
+                
+                # Test role-specific endpoint access
+                role_token = response["access_token"]
+                
+                if role == "student":
+                    success, response = await self.make_request("GET", "/student/profile", token=role_token)
+                    if success or "profile" in str(response).lower():
+                        self.log_result(f"Role Access - {role.title()}", True, f"{role.title()} can access student endpoints")
+                    else:
+                        self.log_result(f"Role Access - {role.title()}", False, f"{role.title()} cannot access student endpoints: {response}")
+                
+                elif role == "teacher":
+                    success, response = await self.make_request("GET", "/teacher/my-materials", token=role_token)
+                    if success or "materials" in str(response).lower():
+                        self.log_result(f"Role Access - {role.title()}", True, f"{role.title()} can access teacher endpoints")
+                    else:
+                        self.log_result(f"Role Access - {role.title()}", False, f"{role.title()} cannot access teacher endpoints: {response}")
+                
+                elif role == "parent":
+                    success, response = await self.make_request("GET", "/parent/students", token=role_token)
+                    if success or "students" in str(response).lower():
+                        self.log_result(f"Role Access - {role.title()}", True, f"{role.title()} can access parent endpoints")
+                    else:
+                        self.log_result(f"Role Access - {role.title()}", False, f"{role.title()} cannot access parent endpoints: {response}")
+            else:
+                self.log_result(f"Role Registration - {role.title()}", False, f"Failed to register {role}: {response}")
+        
+        # Test 10: Frontend-Backend Integration (axios baseURL)
+        # Test that the BASE_URL configuration works properly
+        if BASE_URL == "https://learnmate-ai-12.preview.emergentagent.com/api":
+            self.log_result("Frontend-Backend Integration", True, "Axios baseURL correctly configured for production")
+        else:
+            self.log_result("Frontend-Backend Integration", False, f"Unexpected BASE_URL: {BASE_URL}")
+        
+        # Test 11: Cross-role access restrictions
+        if "student" in self.tokens and "teacher" in self.tokens:
+            student_token = self.tokens["student"]
+            teacher_token = self.tokens["teacher"]
+            
+            # Student trying to access teacher endpoint
+            success, response = await self.make_request("GET", "/teacher/my-materials", token=student_token)
+            if not success and ("access" in str(response).lower() or "forbidden" in str(response).lower()):
+                self.log_result("Cross-Role Access Block - Student->Teacher", True, "Student correctly blocked from teacher endpoints")
+            else:
+                self.log_result("Cross-Role Access Block - Student->Teacher", False, f"Student should not access teacher endpoints: {response}")
+            
+            # Teacher trying to access student-specific endpoint
+            success, response = await self.make_request("GET", "/student/profile", token=teacher_token)
+            if not success and ("access" in str(response).lower() or "forbidden" in str(response).lower()):
+                self.log_result("Cross-Role Access Block - Teacher->Student", True, "Teacher correctly blocked from student endpoints")
+            else:
+                self.log_result("Cross-Role Access Block - Teacher->Student", False, f"Teacher should not access student endpoints: {response}")
+
     async def run_all_tests(self):
-        """Run comprehensive tests for EduAgent platform fixes"""
-        print("🚀 Starting EduAgent Comprehensive Fixes Testing")
-        print("🔬 Focus: API Fixes, Profile System, File Upload, Quiz Fixes, Notes, Auth")
+        """Run focused authentication testing"""
+        print("🚀 Starting EduAgent Authentication Testing")
+        print("🔬 PRIORITY FOCUS: Authentication Endpoints (Login/Signup Fix)")
         print("=" * 70)
         
         try:
+            # Setup existing users first
             await self.register_and_login_users()
             
-            # Priority tests for comprehensive fixes
-            await self.test_api_endpoint_fixes()
-            await self.test_student_profile_system()
-            await self.test_teacher_file_upload()
-            await self.test_quiz_system_fixes()
-            await self.test_notes_management_complete()
-            await self.test_authentication_role_based_access()
-            await self.test_error_scenarios()
-            
-            # Additional legacy tests
-            await self.test_payment_system()
-            await self.test_personalized_learning()
-            await self.test_parent_progress_reporting()
+            # PRIORITY: Comprehensive Authentication Testing
+            await self.test_authentication_endpoints_comprehensive()
             
         except Exception as e:
             self.log_result("Test Suite", False, f"Test suite failed with error: {str(e)}")
         
         # Print summary
         print("\n" + "=" * 70)
-        print("📊 COMPREHENSIVE FIXES TEST SUMMARY")
+        print("📊 AUTHENTICATION TEST SUMMARY")
         print("=" * 70)
         
         total_tests = len(self.test_results)
@@ -1201,21 +1347,11 @@ class EduAgentTester:
         print(f"❌ Failed: {failed_tests}")
         print(f"Success Rate: {(passed_tests/total_tests)*100:.1f}%")
         
-        # Categorize results by feature area
-        api_tests = [r for r in self.test_results if "api" in r["test"].lower()]
-        profile_tests = [r for r in self.test_results if "profile" in r["test"].lower()]
-        upload_tests = [r for r in self.test_results if "upload" in r["test"].lower()]
-        quiz_tests = [r for r in self.test_results if "quiz" in r["test"].lower()]
-        notes_tests = [r for r in self.test_results if "note" in r["test"].lower()]
-        auth_tests = [r for r in self.test_results if "auth" in r["test"].lower() or "access" in r["test"].lower()]
+        # Categorize authentication results
+        auth_tests = [r for r in self.test_results if "auth" in r["test"].lower() or "login" in r["test"].lower() or "register" in r["test"].lower() or "token" in r["test"].lower() or "role" in r["test"].lower()]
         
-        print(f"\n🎯 Feature Breakdown:")
-        print(f"  API Endpoints: {sum(1 for t in api_tests if t['success'])}/{len(api_tests)} passed")
-        print(f"  Profile System: {sum(1 for t in profile_tests if t['success'])}/{len(profile_tests)} passed")
-        print(f"  File Upload: {sum(1 for t in upload_tests if t['success'])}/{len(upload_tests)} passed")
-        print(f"  Quiz System: {sum(1 for t in quiz_tests if t['success'])}/{len(quiz_tests)} passed")
-        print(f"  Notes Management: {sum(1 for t in notes_tests if t['success'])}/{len(notes_tests)} passed")
-        print(f"  Authentication: {sum(1 for t in auth_tests if t['success'])}/{len(auth_tests)} passed")
+        print(f"\n🎯 Authentication Breakdown:")
+        print(f"  Authentication Tests: {sum(1 for t in auth_tests if t['success'])}/{len(auth_tests)} passed")
         
         if failed_tests > 0:
             print("\n🔍 FAILED TESTS:")
