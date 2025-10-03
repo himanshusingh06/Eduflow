@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-EduAgent Backend API Testing Suite
-Tests payment system, personalized learning, and parent progress reporting features
+EduAgent Backend API Testing Suite - Comprehensive Fixes Testing
+Tests all API endpoint fixes, student profile system, teacher file upload, 
+quiz system fixes, notes management, and authentication & role-based access
 """
 
 import asyncio
@@ -10,27 +11,31 @@ import json
 import sys
 from datetime import datetime
 from typing import Dict, Any, Optional
+import io
 
 # Configuration
 BASE_URL = "https://learnmate-ai-12.preview.emergentagent.com/api"
 TEST_USERS = {
     "student": {
-        "email": "alice.student@eduagent.com",
-        "password": "student123",
-        "name": "Alice Johnson",
-        "role": "student"
+        "email": "emma.student@eduagent.com",
+        "password": "student2024",
+        "name": "Emma Rodriguez",
+        "role": "student",
+        "phone": "+1234567890"
     },
     "teacher": {
-        "email": "bob.teacher@eduagent.com", 
-        "password": "teacher123",
-        "name": "Bob Smith",
-        "role": "teacher"
+        "email": "david.teacher@eduagent.com", 
+        "password": "teacher2024",
+        "name": "David Chen",
+        "role": "teacher",
+        "phone": "+1234567891"
     },
     "parent": {
-        "email": "carol.parent@eduagent.com",
-        "password": "parent123", 
-        "name": "Carol Wilson",
-        "role": "parent"
+        "email": "sarah.parent@eduagent.com",
+        "password": "parent2024", 
+        "name": "Sarah Johnson",
+        "role": "parent",
+        "phone": "+1234567892"
     }
 }
 
