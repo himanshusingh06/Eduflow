@@ -377,23 +377,36 @@ Make it engaging, age-appropriate, and well-structured for {grade_level} level u
         return f"Study content for {topic}: This is a comprehensive overview of {topic} in {subject}. [AI generation failed, please try again]"
 
 async def generate_quiz(topic: str, subject: str, grade_level: str, num_questions: int = 10, difficulty: str = "medium") -> List[QuizQuestion]:
-    """Generate quiz questions using AI"""
+    """Generate quiz questions using Gemini AI"""
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"quiz_gen_{uuid.uuid4()}",
-            system_message=f"You are an expert quiz creator for {grade_level} students in {subject}."
-        ).with_model("gemini", "gemini-2.5-pro")
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
-        user_message = UserMessage(
-            text=f"Generate {num_questions} multiple choice questions about '{topic}' for {grade_level} students in {subject}. Difficulty: {difficulty}. Format as JSON array with 'question', 'options' (array of 4 choices), 'correct_answer' (0-3 index), and 'explanation' fields."
-        )
-        
-        response = await chat.send_message(user_message)
+        prompt = f"""Generate {num_questions} multiple choice questions about '{topic}' for {grade_level} students in {subject}.
+Difficulty level: {difficulty}
+
+Format your response as a JSON array with each question having:
+- "question": the question text
+- "options": array of 4 answer choices
+- "correct_answer": index (0-3) of the correct answer
+- "explanation": brief explanation of the correct answer
+
+Example format:
+[
+  {{
+    "question": "What is photosynthesis?",
+    "options": ["A process in animals", "A process in plants", "A chemical reaction", "All of the above"],
+    "correct_answer": 1,
+    "explanation": "Photosynthesis is the process by which plants convert sunlight into energy."
+  }}
+]
+
+Generate {num_questions} questions now:"""
+
+        response = model.generate_content(prompt)
         
         # Parse AI response to extract JSON
         import re
-        json_match = re.search(r'\[.*\]', response, re.DOTALL)
+        json_match = re.search(r'\[.*\]', response.text, re.DOTALL)
         if json_match:
             questions_data = json.loads(json_match.group())
             return [QuizQuestion(**q) for q in questions_data]
