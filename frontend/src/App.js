@@ -1095,7 +1095,7 @@ const AskAI = () => {
         });
       } else {
         // Use general AI for broader questions
-        response = await axios.post('/api/qa/ask', {
+        response = await axios.post('/qa/ask', {
           question: question,
           subject: subject
         });
