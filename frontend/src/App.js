@@ -776,6 +776,11 @@ const StudyContent = () => {
 const QuizSystem = () => {
   const [quizzes, setQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedQuiz, setSelectedQuiz] = useState(null);
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [quizResult, setQuizResult] = useState(null);
+  const [quizAnalysis, setQuizAnalysis] = useState(null);
 
   useEffect(() => {
     fetchQuizzes();
@@ -783,21 +788,221 @@ const QuizSystem = () => {
 
   const fetchQuizzes = async () => {
     try {
-      const response = await axios.get('/quiz/list');
-      setQuizzes(response.data);
+      const response = await axios.get('/api/quiz/list');
+      setQuizzes(response.data || []);
     } catch (error) {
+      console.error('Quiz fetch error:', error);
       toast.error('Failed to load quizzes');
+      setQuizzes([]); // Set empty array as fallback
     } finally {
       setLoading(false);
     }
   };
 
-  const takeQuiz = (quiz) => {
-    toast.info('Quiz system integration coming soon!');
+  const startQuiz = (quiz) => {
+    setSelectedQuiz(quiz);
+    setCurrentQuestion(0);
+    setAnswers({});
+    setQuizResult(null);
+    setQuizAnalysis(null);
+  };
+
+  const selectAnswer = (questionIndex, optionIndex) => {
+    setAnswers({...answers, [questionIndex]: optionIndex});
+  };
+
+  const nextQuestion = () => {
+    if (currentQuestion < selectedQuiz.questions.length - 1) {
+      setCurrentQuestion(currentQuestion + 1);
+    }
+  };
+
+  const previousQuestion = () => {
+    if (currentQuestion > 0) {
+      setCurrentQuestion(currentQuestion - 1);
+    }
+  };
+
+  const submitQuiz = async () => {
+    try {
+      const response = await axios.post(`/api/quiz/${selectedQuiz.id}/attempt`, answers);
+      setQuizResult(response.data);
+      
+      // Fetch quiz analysis
+      try {
+        const analysisResponse = await axios.get(`/api/quiz/analysis/${response.data.id}`);
+        setQuizAnalysis(analysisResponse.data);
+      } catch (analysisError) {
+        console.error('Analysis fetch error:', analysisError);
+      }
+      
+      toast.success('Quiz submitted successfully!');
+    } catch (error) {
+      console.error('Quiz submission error:', error);
+      toast.error('Failed to submit quiz');
+    }
+  };
+
+  const backToQuizList = () => {
+    setSelectedQuiz(null);
+    setQuizResult(null);
+    setQuizAnalysis(null);
+    fetchQuizzes(); // Refresh quiz list
   };
 
   if (loading) return <div className="p-6">Loading quizzes...</div>;
 
+  // Quiz Results View
+  if (quizResult) {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Quiz Completed!</h2>
+            <div className={`text-4xl font-bold mb-2 ${quizResult.percentage >= 70 ? 'text-green-600' : quizResult.percentage >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+              {quizResult.percentage.toFixed(1)}%
+            </div>
+            <p className="text-gray-600">{quizResult.score} out of {quizResult.total_marks} correct</p>
+          </div>
+
+          {/* AI Analysis Results */}
+          {quizAnalysis && (
+            <div className="mt-6 space-y-4">
+              <h3 className="text-xl font-semibold text-gray-900">AI Analysis & Recommendations</h3>
+              
+              {quizAnalysis.analysis_data.performance_summary && (
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-blue-900 mb-2">Performance Summary</h4>
+                  <p className="text-blue-800">{quizAnalysis.analysis_data.performance_summary}</p>
+                </div>
+              )}
+
+              {quizAnalysis.insights && quizAnalysis.insights.length > 0 && (
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-green-900 mb-2">Key Insights</h4>
+                  <ul className="text-green-800 space-y-1">
+                    {quizAnalysis.insights.map((insight, idx) => (
+                      <li key={idx}>• {insight}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {quizAnalysis.recommendations && quizAnalysis.recommendations.length > 0 && (
+                <div className="bg-orange-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-orange-900 mb-2">Recommendations</h4>
+                  <ul className="text-orange-800 space-y-1">
+                    {quizAnalysis.recommendations.map((rec, idx) => (
+                      <li key={idx}>• {rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="bg-purple-50 p-4 rounded-lg">
+                <h4 className="font-medium text-purple-900 mb-2">Performance Trend</h4>
+                <p className="text-purple-800 capitalize">{quizAnalysis.performance_trend}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="flex space-x-4 mt-6">
+            <button
+              onClick={backToQuizList}
+              className="flex-1 bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 transition-colors"
+            >
+              Back to Quizzes
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Quiz Taking View
+  if (selectedQuiz) {
+    const question = selectedQuiz.questions[currentQuestion];
+    const progress = ((currentQuestion + 1) / selectedQuiz.questions.length) * 100;
+
+    return (
+      <div className="p-6 space-y-6">
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">{selectedQuiz.title}</h2>
+            <button
+              onClick={backToQuizList}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              ← Back
+            </button>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="mb-6">
+            <div className="flex justify-between text-sm text-gray-600 mb-2">
+              <span>Question {currentQuestion + 1} of {selectedQuiz.questions.length}</span>
+              <span>{progress.toFixed(0)}% Complete</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-emerald-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              ></div>
+            </div>
+          </div>
+
+          {/* Question */}
+          <div className="mb-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">{question.question}</h3>
+            <div className="space-y-3">
+              {question.options.map((option, optionIndex) => (
+                <label key={optionIndex} className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name={`question-${currentQuestion}`}
+                    value={optionIndex}
+                    checked={answers[currentQuestion] === optionIndex}
+                    onChange={() => selectAnswer(currentQuestion, optionIndex)}
+                    className="mr-3"
+                  />
+                  <span className="text-gray-800">{option}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Navigation */}
+          <div className="flex justify-between">
+            <button
+              onClick={previousQuestion}
+              disabled={currentQuestion === 0}
+              className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            
+            {currentQuestion === selectedQuiz.questions.length - 1 ? (
+              <button
+                onClick={submitQuiz}
+                className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+              >
+                Submit Quiz
+              </button>
+            ) : (
+              <button
+                onClick={nextQuestion}
+                className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+              >
+                Next
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Quiz List View
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
@@ -807,7 +1012,7 @@ const QuizSystem = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {quizzes.length > 0 ? (
           quizzes.map((quiz, idx) => (
-            <div key={idx} className="bg-white rounded-xl p-6 shadow-sm border hover:shadow-lg transition-shadow">
+            <div key={quiz.id || idx} className="bg-white rounded-xl p-6 shadow-sm border hover:shadow-lg transition-shadow">
               <div className="mb-4">
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">{quiz.title}</h3>
                 <p className="text-gray-600">{quiz.subject} • {quiz.grade_level}</p>
@@ -816,20 +1021,20 @@ const QuizSystem = () => {
               <div className="space-y-2 mb-4">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Questions:</span>
-                  <span className="font-medium">{quiz.questions.length}</span>
+                  <span className="font-medium">{quiz.questions ? quiz.questions.length : 0}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Time Limit:</span>
-                  <span className="font-medium">{quiz.time_limit} min</span>
+                  <span className="font-medium">{quiz.time_limit || 30} min</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Total Marks:</span>
-                  <span className="font-medium">{quiz.total_marks}</span>
+                  <span className="font-medium">{quiz.total_marks || (quiz.questions ? quiz.questions.length : 0)}</span>
                 </div>
               </div>
               
               <button
-                onClick={() => takeQuiz(quiz)}
+                onClick={() => startQuiz(quiz)}
                 className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 transition-colors"
               >
                 Take Quiz
@@ -840,7 +1045,7 @@ const QuizSystem = () => {
           <div className="col-span-full text-center py-12">
             <PenTool className="w-16 h-16 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-500 text-lg">No quizzes available</p>
-            <p className="text-gray-400">New quizzes will appear here</p>
+            <p className="text-gray-400">Ask your teacher to create some quizzes</p>
           </div>
         )}
       </div>
