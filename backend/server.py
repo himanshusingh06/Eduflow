@@ -1830,12 +1830,15 @@ async def get_available_materials(current_user: User = Depends(get_current_user)
 
 # ============= NOTES ROUTES =============
 
+class NoteCreateRequest(BaseModel):
+    title: str
+    content: str
+    subject: str
+    tags: List[str] = []
+
 @api_router.post("/notes/create")
 async def create_note(
-    title: str,
-    content: str,
-    subject: str,
-    tags: List[str] = [],
+    note_data: NoteCreateRequest,
     current_user: User = Depends(get_current_user)
 ):
     """Create a new note"""
