@@ -827,8 +827,8 @@ async def submit_quiz_attempt(
     # Calculate score
     correct_answers = 0
     for q_idx, selected_option in answers.items():
-        if q_idx < len(quiz.questions):
-            if quiz.questions[q_idx].correct_answer == selected_option:
+        if int(q_idx) < len(quiz.questions):
+            if quiz.questions[int(q_idx)].correct_answer == selected_option:
                 correct_answers += 1
     
     score = correct_answers
