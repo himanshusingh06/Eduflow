@@ -1811,7 +1811,7 @@ const FileUpload = () => {
   const fetchMaterials = async () => {
     setLoading(true);
     try {
-      const response = await axios.get('/api/teacher/my-materials');
+      const response = await axios.get('/teacher/my-materials');
       setMaterials(response.data.materials || []);
     } catch (error) {
       toast.error('Failed to load materials');
