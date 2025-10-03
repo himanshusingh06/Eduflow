@@ -172,6 +172,75 @@ class ChatMessageCreate(BaseModel):
     receiver_id: str
     message: str
 
+# Payment Models
+class SubscriptionPlan(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    description: str
+    monthly_amount: int  # Amount in paise (Rs 1000 = 100000 paise)
+    features: List[str] = []
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class PaymentRequest(BaseModel):
+    student_id: str
+    amount: int  # Amount in paise
+    description: str
+    payment_type: str = "one_time"  # one_time, subscription
+
+class SubscriptionRequest(BaseModel):
+    student_id: str
+    plan_id: str
+    duration_months: int = 1
+
+class PaymentRecord(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    transaction_id: str
+    student_id: str
+    amount: int
+    payment_type: str  # one_time, subscription
+    status: str  # INITIATED, SUCCESS, FAILED, PENDING
+    description: str
+    phonepe_order_id: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class Subscription(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    student_id: str
+    plan_id: str
+    status: str  # ACTIVE, INACTIVE, EXPIRED, PENDING
+    start_date: datetime
+    end_date: datetime
+    monthly_amount: int
+    auto_renewal: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_payment_date: Optional[datetime] = None
+
+# Personalized Learning Models
+class LearningPath(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    student_id: str
+    subject: str
+    current_level: str  # beginner, intermediate, advanced
+    recommended_topics: List[str] = []
+    completed_topics: List[str] = []
+    weak_areas: List[str] = []
+    strong_areas: List[str] = []
+    next_recommendations: List[str] = []
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class LearningInsight(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    student_id: str
+    insight_type: str  # performance, recommendation, achievement
+    title: str
+    description: str
+    priority: str  # high, medium, low
+    action_required: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
 # ============= UTILITY FUNCTIONS =============
 
 def hash_password(password: str) -> str:
