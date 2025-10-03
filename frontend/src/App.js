@@ -2,7 +2,7 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
-import { User, BookOpen, GraduationCap, MessageSquare, BarChart3, Settings, LogOut, Brain, Users, PenTool, Menu, X } from 'lucide-react';
+import { User, BookOpen, GraduationCap, MessageSquare, BarChart3, Settings, LogOut, Brain, Users, PenTool, Menu, X, Upload } from 'lucide-react';
 import './App.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
