@@ -746,9 +746,17 @@ const StudyContent = () => {
                     </span>
                   ))}
                 </div>
-                <button className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors">
-                  Read More
-                </button>
+                <div className="flex space-x-2">
+                  <button 
+                    onClick={() => purchaseCourse(item)}
+                    className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors"
+                  >
+                    Purchase ₹500
+                  </button>
+                  <button className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors">
+                    Preview
+                  </button>
+                </div>
               </div>
             </div>
           ))
