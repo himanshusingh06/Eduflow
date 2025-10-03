@@ -142,7 +142,7 @@ class QuizAttempt(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     quiz_id: str
     student_id: str
-    answers: Dict[int, int]  # question_index: selected_option
+    answers: Dict[str, int]  # question_index: selected_option
     score: int
     total_marks: int
     percentage: float
