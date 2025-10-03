@@ -623,21 +623,25 @@ const Dashboard = () => {
         if (user?.role === 'parent') return <ParentDashboard />;
         break;
       case 'study':
-        return <div className="p-6">Study Content - Coming Soon</div>;
+        return <StudyContent />;
       case 'quiz':
-        return <div className="p-6">Quizzes - Coming Soon</div>;
+        return <QuizSystem />;
       case 'ask':
-        return <div className="p-6">Ask AI Question - Coming Soon</div>;
+        return <AskAI />;
       case 'create-content':
-        return <div className="p-6">Create Content - Coming Soon</div>;
+        return <CreateContent />;
       case 'create-quiz':
-        return <div className="p-6">Create Quiz - Coming Soon</div>;
+        return <CreateQuiz />;
       case 'students':
-        return <div className="p-6">Students Management - Coming Soon</div>;
+        return <StudentsManagement />;
       case 'children':
-        return <div className="p-6">My Children - Coming Soon</div>;
+        return <MyChildren />;
       case 'progress':
-        return <div className="p-6">Progress Reports - Coming Soon</div>;
+        return <ProgressReports />;
+      case 'subscription':
+        return <SubscriptionManagement />;
+      case 'learning-path':
+        return <PersonalizedLearning />;
       case 'chat':
         return <div className="p-6">Messages - Coming Soon (WhatsApp Integration)</div>;
       default:
