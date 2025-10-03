@@ -1424,8 +1424,8 @@ const PersonalizedLearning = () => {
   const fetchLearningData = async () => {
     try {
       const [pathResponse, insightsResponse] = await Promise.all([
-        axios.get('/api/learning-path'),
-        axios.get('/api/learning-insights')
+        axios.get('/learning-path'),
+        axios.get('/learning-insights')
       ]);
       
       setLearningPath(pathResponse.data);
