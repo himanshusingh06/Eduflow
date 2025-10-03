@@ -179,6 +179,7 @@ const Sidebar = ({ activeTab, setActiveTab, user, isMobileOpen, setIsMobileOpen 
     if (role === 'student') {
       return [
         ...commonItems,
+        { id: 'profile', label: 'My Profile', icon: User },
         { id: 'study', label: 'Study Content', icon: BookOpen },
         { id: 'quiz', label: 'Quizzes', icon: PenTool },
         { id: 'ask', label: 'Ask AI', icon: Brain },
