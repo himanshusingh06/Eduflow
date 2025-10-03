@@ -636,6 +636,54 @@ const StudyContent = () => {
     }
   };
 
+  const purchaseCourse = async (courseItem) => {
+    try {
+      // Create payment order
+      const response = await axios.post('/create-order', {
+        amount: 50000, // Rs 500 for a course
+        description: `Purchase: ${courseItem.title}`,
+        payment_type: 'one_time'
+      });
+
+      if (response.data.success) {
+        const options = {
+          key: response.data.key_id,
+          amount: response.data.amount,
+          currency: response.data.currency,
+          name: 'EduAgent - Learning Platform',
+          description: `Course: ${courseItem.title}`,
+          order_id: response.data.order_id,
+          handler: async function (razorpayResponse) {
+            try {
+              await axios.post('/verify-payment', {
+                order_id: razorpayResponse.razorpay_order_id,
+                payment_id: razorpayResponse.razorpay_payment_id,
+                signature: razorpayResponse.razorpay_signature
+              });
+              
+              toast.success('Course purchased successfully!');
+            } catch (error) {
+              toast.error('Payment verification failed');
+            }
+          },
+          prefill: {
+            name: 'Student Name',
+            email: 'student@example.com',
+            contact: '9999999999'
+          },
+          theme: {
+            color: '#10b981'
+          }
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      }
+    } catch (error) {
+      toast.error('Failed to create payment order');
+    }
+  };
+
   if (loading) return <div className="p-6">Loading content...</div>;
 
   return (
