@@ -1844,7 +1844,7 @@ const FileUpload = () => {
         }
       };
       
-      const response = await axios.post('/api/teacher/upload-material', formData, config);
+      const response = await axios.post('/teacher/upload-material', formData, config);
 
       toast.success(`File uploaded and processed! ${response.data.pages_processed} pages extracted.`);
       fetchMaterials();
