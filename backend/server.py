@@ -1845,10 +1845,10 @@ async def create_note(
     try:
         note = StudentNote(
             student_id=current_user.id,
-            title=title,
-            content=content,
-            subject=subject,
-            tags=tags
+            title=note_data.title,
+            content=note_data.content,
+            subject=note_data.subject,
+            tags=note_data.tags
         )
         
         await db.student_notes.insert_one(note.dict())
