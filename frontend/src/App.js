@@ -2281,7 +2281,7 @@ const ProgressReports = () => {
     
     setLoading(true);
     try {
-      const response = await axios.get(`/parent/progress-report/${selectedChild}`);
+      const response = await axios.get(`/api/parent/progress-report/${selectedChild}`);
       setReport(response.data);
     } catch (error) {
       toast.error('Failed to generate report');
