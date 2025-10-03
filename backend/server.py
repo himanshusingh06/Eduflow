@@ -299,6 +299,12 @@ class StudentNote(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
+class NoteCreateRequest(BaseModel):
+    title: str
+    content: str
+    subject: str
+    tags: List[str] = []
+
 class NoteSummaryRequest(BaseModel):
     note_content: str
     summary_type: str = "brief"  # brief, detailed, key_points
