@@ -260,6 +260,66 @@ class LearningInsight(BaseModel):
     action_required: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+# File Upload Models
+class StudyMaterial(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    filename: str
+    original_filename: str
+    file_type: str
+    file_size: int
+    uploaded_by: str  # teacher_id
+    subject: str
+    grade_level: str
+    description: str
+    file_path: str
+    is_processed: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class StudyMaterialUpload(BaseModel):
+    subject: str
+    grade_level: str
+    description: str
+
+# RAG and Notes Models
+class RAGDocument(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    material_id: str
+    content: str
+    page_number: int
+    embedding_id: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class StudentNote(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    student_id: str
+    title: str
+    content: str
+    subject: str
+    tags: List[str] = []
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class NoteSummaryRequest(BaseModel):
+    note_content: str
+    summary_type: str = "brief"  # brief, detailed, key_points
+
+class RAGQueryRequest(BaseModel):
+    question: str
+    subject: Optional[str] = None
+    grade_level: Optional[str] = None
+
+# Quiz Analysis Models
+class QuizAnalysis(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    student_id: str
+    quiz_id: str
+    attempt_id: str
+    analysis_data: Dict[str, Any] = {}
+    insights: List[str] = []
+    recommendations: List[str] = []
+    performance_trend: str  # improving, declining, stable
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
 # ============= UTILITY FUNCTIONS =============
 
 def hash_password(password: str) -> str:
