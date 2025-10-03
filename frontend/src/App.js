@@ -611,6 +611,1015 @@ const ParentDashboard = () => {
   );
 };
 
+// Study Content Component
+const StudyContent = () => {
+  const [content, setContent] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState({ subject: '', grade_level: '' });
+
+  useEffect(() => {
+    fetchContent();
+  }, [filters]);
+
+  const fetchContent = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.subject) params.append('subject', filters.subject);
+      if (filters.grade_level) params.append('grade_level', filters.grade_level);
+      
+      const response = await axios.get(`/study/content?${params}`);
+      setContent(response.data);
+    } catch (error) {
+      toast.error('Failed to load content');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) return <div className="p-6">Loading content...</div>;
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold text-gray-900">Study Content</h1>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white rounded-xl p-4 shadow-sm border">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <select
+            value={filters.subject}
+            onChange={(e) => setFilters({...filters, subject: e.target.value})}
+            className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          >
+            <option value="">All Subjects</option>
+            <option value="Mathematics">Mathematics</option>
+            <option value="Science">Science</option>
+            <option value="English">English</option>
+            <option value="History">History</option>
+          </select>
+          <select
+            value={filters.grade_level}
+            onChange={(e) => setFilters({...filters, grade_level: e.target.value})}
+            className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          >
+            <option value="">All Grades</option>
+            <option value="Grade 6">Grade 6</option>
+            <option value="Grade 7">Grade 7</option>
+            <option value="Grade 8">Grade 8</option>
+            <option value="Grade 9">Grade 9</option>
+            <option value="Grade 10">Grade 10</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Content List */}
+      <div className="grid grid-cols-1 gap-6">
+        {content.length > 0 ? (
+          content.map((item, idx) => (
+            <div key={idx} className="bg-white rounded-xl p-6 shadow-sm border">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">{item.title}</h3>
+                  <p className="text-gray-600">{item.subject} • {item.grade_level}</p>
+                </div>
+                <div className="text-xs text-gray-500">
+                  {new Date(item.created_at).toLocaleDateString()}
+                </div>
+              </div>
+              <div className="prose max-w-none text-gray-700">
+                {item.content.substring(0, 300)}...
+              </div>
+              <div className="flex items-center justify-between mt-4">
+                <div className="flex flex-wrap gap-2">
+                  {item.tags.map((tag, tagIdx) => (
+                    <span key={tagIdx} className="px-2 py-1 bg-emerald-100 text-emerald-800 text-xs rounded-full">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+                <button className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors">
+                  Read More
+                </button>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="text-center py-12">
+            <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg">No study content available</p>
+            <p className="text-gray-400">Check back later for new content</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Quiz System Component
+const QuizSystem = () => {
+  const [quizzes, setQuizzes] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchQuizzes();
+  }, []);
+
+  const fetchQuizzes = async () => {
+    try {
+      const response = await axios.get('/quiz/list');
+      setQuizzes(response.data);
+    } catch (error) {
+      toast.error('Failed to load quizzes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const takeQuiz = (quiz) => {
+    toast.info('Quiz system integration coming soon!');
+  };
+
+  if (loading) return <div className="p-6">Loading quizzes...</div>;
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold text-gray-900">Available Quizzes</h1>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {quizzes.length > 0 ? (
+          quizzes.map((quiz, idx) => (
+            <div key={idx} className="bg-white rounded-xl p-6 shadow-sm border hover:shadow-lg transition-shadow">
+              <div className="mb-4">
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">{quiz.title}</h3>
+                <p className="text-gray-600">{quiz.subject} • {quiz.grade_level}</p>
+              </div>
+              
+              <div className="space-y-2 mb-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Questions:</span>
+                  <span className="font-medium">{quiz.questions.length}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Time Limit:</span>
+                  <span className="font-medium">{quiz.time_limit} min</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Total Marks:</span>
+                  <span className="font-medium">{quiz.total_marks}</span>
+                </div>
+              </div>
+              
+              <button
+                onClick={() => takeQuiz(quiz)}
+                className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 transition-colors"
+              >
+                Take Quiz
+              </button>
+            </div>
+          ))
+        ) : (
+          <div className="col-span-full text-center py-12">
+            <PenTool className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg">No quizzes available</p>
+            <p className="text-gray-400">New quizzes will appear here</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Ask AI Component
+const AskAI = () => {
+  const [question, setQuestion] = useState('');
+  const [subject, setSubject] = useState('Mathematics');
+  const [loading, setLoading] = useState(false);
+  const [conversation, setConversation] = useState([]);
+
+  const askQuestion = async () => {
+    if (!question.trim()) return;
+
+    setLoading(true);
+    try {
+      const response = await axios.post('/qa/ask', {
+        question: question,
+        subject: subject
+      });
+
+      setConversation(prev => [
+        ...prev,
+        { type: 'question', text: question, timestamp: new Date() },
+        { type: 'answer', text: response.data.answer, timestamp: new Date() }
+      ]);
+      
+      setQuestion('');
+      toast.success('Question answered successfully!');
+    } catch (error) {
+      toast.error('Failed to get answer');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Ask AI Tutor</h1>
+        <p className="text-gray-600">Get instant answers to your academic questions</p>
+      </div>
+
+      {/* Question Input */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+          <select
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          >
+            <option value="Mathematics">Mathematics</option>
+            <option value="Science">Science</option>
+            <option value="English">English</option>
+            <option value="History">History</option>
+            <option value="Geography">Geography</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Your Question</label>
+          <textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="Ask your question here..."
+            className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 min-h-[100px]"
+          />
+        </div>
+
+        <button
+          onClick={askQuestion}
+          disabled={loading || !question.trim()}
+          className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {loading ? 'Getting Answer...' : 'Ask Question'}
+        </button>
+      </div>
+
+      {/* Conversation History */}
+      {conversation.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold text-gray-900">Conversation</h2>
+          <div className="space-y-4">
+            {conversation.map((msg, idx) => (
+              <div key={idx} className={`p-4 rounded-xl ${
+                msg.type === 'question' 
+                  ? 'bg-emerald-50 border-l-4 border-emerald-500' 
+                  : 'bg-blue-50 border-l-4 border-blue-500'
+              }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-medium text-sm text-gray-600">
+                    {msg.type === 'question' ? 'Your Question:' : 'AI Answer:'}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    {msg.timestamp.toLocaleTimeString()}
+                  </span>
+                </div>
+                <p className="text-gray-800">{msg.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Subscription Management Component  
+const SubscriptionManagement = () => {
+  const [subscription, setSubscription] = useState(null);
+  const [plans, setPlans] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchSubscriptionData();
+  }, []);
+
+  const fetchSubscriptionData = async () => {
+    try {
+      const [subResponse, plansResponse] = await Promise.all([
+        axios.get('/my-subscription'),
+        axios.get('/subscription-plans')
+      ]);
+      
+      setSubscription(subResponse.data);
+      setPlans(plansResponse.data.plans);
+    } catch (error) {
+      toast.error('Failed to load subscription data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const subscribeToPlan = async (planId) => {
+    try {
+      const response = await axios.post('/create-subscription', {
+        student_id: 'current_user', // This would be handled by backend
+        plan_id: planId,
+        duration_months: 1
+      });
+
+      if (response.data.success) {
+        // Redirect to PhonePe payment
+        window.open(response.data.mandate_url, '_blank');
+        toast.success('Subscription created! Complete the payment to activate.');
+      }
+    } catch (error) {
+      toast.error('Failed to create subscription');
+    }
+  };
+
+  if (loading) return <div className="p-6">Loading subscription data...</div>;
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Subscription Management</h1>
+        <p className="text-gray-600">Manage your premium access to educational content</p>
+      </div>
+
+      {/* Current Subscription Status */}
+      {subscription?.has_subscription ? (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-6">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
+              <GraduationCap className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-green-900">Premium Active</h3>
+              <p className="text-green-700">You have access to all premium features</p>
+            </div>
+          </div>
+          <div className="space-y-2 text-sm">
+            <p><span className="font-medium">Status:</span> {subscription.subscription.status}</p>
+            <p><span className="font-medium">Expires:</span> {new Date(subscription.expires_at).toLocaleDateString()}</p>
+            <p><span className="font-medium">Monthly Amount:</span> ₹{subscription.subscription.monthly_amount / 100}</p>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
+          <h3 className="text-lg font-semibold text-yellow-900 mb-2">No Active Subscription</h3>
+          <p className="text-yellow-700">Subscribe to access premium features and personalized learning</p>
+        </div>
+      )}
+
+      {/* Available Plans */}
+      <div>
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4">Subscription Plans</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {plans.map((plan) => (
+            <div key={plan.id} className="bg-white rounded-xl p-6 shadow-sm border hover:shadow-lg transition-shadow">
+              <div className="text-center mb-6">
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.name}</h3>
+                <div className="text-3xl font-bold text-emerald-600 mb-2">{plan.price_display}</div>
+                <p className="text-gray-600">{plan.description}</p>
+              </div>
+
+              <div className="space-y-3 mb-6">
+                {plan.features.map((feature, idx) => (
+                  <div key={idx} className="flex items-center space-x-3">
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                    <span className="text-gray-700">{feature}</span>
+                  </div>
+                ))}
+              </div>
+
+              {!subscription?.has_subscription && (
+                <button
+                  onClick={() => subscribeToPlan(plan.id)}
+                  className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 transition-colors"
+                >
+                  Subscribe Now
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Personalized Learning Component
+const PersonalizedLearning = () => {
+  const [learningPath, setLearningPath] = useState(null);
+  const [insights, setInsights] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchLearningData();
+  }, []);
+
+  const fetchLearningData = async () => {
+    try {
+      const [pathResponse, insightsResponse] = await Promise.all([
+        axios.get('/learning-path'),
+        axios.get('/learning-insights')
+      ]);
+      
+      setLearningPath(pathResponse.data);
+      setInsights(insightsResponse.data.insights || []);
+    } catch (error) {
+      toast.error('Failed to load learning path');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const markTopicComplete = async (topic) => {
+    try {
+      await axios.post('/update-learning-progress', null, {
+        params: { completed_topic: topic }
+      });
+      
+      toast.success('Progress updated!');
+      fetchLearningData(); // Refresh data
+    } catch (error) {
+      toast.error('Failed to update progress');
+    }
+  };
+
+  if (loading) return <div className="p-6">Loading personalized learning path...</div>;
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Personalized Learning Path</h1>
+        <p className="text-gray-600">AI-powered recommendations based on your performance</p>
+      </div>
+
+      {/* Current Level */}
+      {learningPath && (
+        <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl p-6 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-semibold mb-2">Current Level</h3>
+              <p className="text-2xl font-bold capitalize">{learningPath.current_level}</p>
+            </div>
+            <Brain className="w-12 h-12 opacity-80" />
+          </div>
+        </div>
+      )}
+
+      {/* Learning Insights */}
+      {insights.length > 0 && (
+        <div>
+          <h2 className="text-2xl font-semibold text-gray-900 mb-4">AI Insights</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {insights.map((insight, idx) => (
+              <div key={idx} className={`p-4 rounded-xl border-l-4 ${
+                insight.priority === 'high' ? 'bg-red-50 border-red-500' :
+                insight.priority === 'medium' ? 'bg-yellow-50 border-yellow-500' :
+                'bg-blue-50 border-blue-500'
+              }`}>
+                <h4 className="font-semibold text-gray-900 mb-2">{insight.title}</h4>
+                <p className="text-gray-700 text-sm">{insight.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recommended Topics */}
+      {learningPath && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Recommended Topics</h3>
+            <div className="space-y-3">
+              {learningPath.recommended_topics.map((topic, idx) => (
+                <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <span className="font-medium text-gray-900">{topic}</span>
+                  <button
+                    onClick={() => markTopicComplete(topic)}
+                    className="px-3 py-1 bg-emerald-500 text-white rounded text-sm hover:bg-emerald-600"
+                  >
+                    Mark Complete
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            {/* Strong Areas */}
+            <div className="bg-white rounded-xl p-6 shadow-sm border">
+              <h3 className="text-lg font-semibold text-green-900 mb-4">Strong Areas</h3>
+              <div className="space-y-2">
+                {learningPath.strong_areas.map((area, idx) => (
+                  <div key={idx} className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span className="text-gray-700">{area}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Areas for Improvement */}
+            <div className="bg-white rounded-xl p-6 shadow-sm border">
+              <h3 className="text-lg font-semibold text-orange-900 mb-4">Areas for Improvement</h3>
+              <div className="space-y-2">
+                {learningPath.weak_areas.map((area, idx) => (
+                  <div key={idx} className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                    <span className="text-gray-700">{area}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Create Content Component (for teachers)
+const CreateContent = () => {
+  const [formData, setFormData] = useState({
+    title: '',
+    subject: 'Mathematics',
+    grade_level: 'Grade 8',
+    topic: '',
+    tags: []
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    try {
+      await axios.post('/study/generate', formData);
+      toast.success('Content generated successfully!');
+      setFormData({
+        title: '',
+        subject: 'Mathematics', 
+        grade_level: 'Grade 8',
+        topic: '',
+        tags: []
+      });
+    } catch (error) {
+      toast.error('Failed to generate content');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 max-w-2xl mx-auto">
+      <h1 className="text-3xl font-bold text-gray-900 mb-6">Create Study Content</h1>
+      
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl p-6 shadow-sm border space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Content Title</label>
+          <input
+            type="text"
+            value={formData.title}
+            onChange={(e) => setFormData({...formData, title: e.target.value})}
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            required
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+            <select
+              value={formData.subject}
+              onChange={(e) => setFormData({...formData, subject: e.target.value})}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Mathematics">Mathematics</option>
+              <option value="Science">Science</option>
+              <option value="English">English</option>
+              <option value="History">History</option>
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
+            <select
+              value={formData.grade_level}
+              onChange={(e) => setFormData({...formData, grade_level: e.target.value})}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Grade 6">Grade 6</option>
+              <option value="Grade 7">Grade 7</option>
+              <option value="Grade 8">Grade 8</option>
+              <option value="Grade 9">Grade 9</option>
+              <option value="Grade 10">Grade 10</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Topic Description</label>
+          <textarea
+            value={formData.topic}
+            onChange={(e) => setFormData({...formData, topic: e.target.value})}
+            placeholder="Describe the topic you want to generate content for..."
+            className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 min-h-[100px]"
+            required
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+        >
+          {loading ? 'Generating Content...' : 'Generate AI Content'}
+        </button>
+      </form>
+    </div>
+  );
+};
+
+// Create Quiz Component (for teachers)
+const CreateQuiz = () => {
+  const [formData, setFormData] = useState({
+    title: '',
+    subject: 'Mathematics',
+    grade_level: 'Grade 8',
+    topic: '',
+    num_questions: 10,
+    difficulty: 'medium'
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    try {
+      await axios.post('/quiz/generate', formData);
+      toast.success('Quiz generated successfully!');
+      setFormData({
+        title: '',
+        subject: 'Mathematics',
+        grade_level: 'Grade 8', 
+        topic: '',
+        num_questions: 10,
+        difficulty: 'medium'
+      });
+    } catch (error) {
+      toast.error('Failed to generate quiz');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 max-w-2xl mx-auto">
+      <h1 className="text-3xl font-bold text-gray-900 mb-6">Create Quiz</h1>
+      
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl p-6 shadow-sm border space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Quiz Title</label>
+          <input
+            type="text"
+            value={formData.title}
+            onChange={(e) => setFormData({...formData, title: e.target.value})}
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            required
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+            <select
+              value={formData.subject}
+              onChange={(e) => setFormData({...formData, subject: e.target.value})}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Mathematics">Mathematics</option>
+              <option value="Science">Science</option>
+              <option value="English">English</option>
+              <option value="History">History</option>
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
+            <select
+              value={formData.grade_level}
+              onChange={(e) => setFormData({...formData, grade_level: e.target.value})}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Grade 6">Grade 6</option>
+              <option value="Grade 7">Grade 7</option>
+              <option value="Grade 8">Grade 8</option>
+              <option value="Grade 9">Grade 9</option>
+              <option value="Grade 10">Grade 10</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Quiz Topic</label>
+          <textarea
+            value={formData.topic}
+            onChange={(e) => setFormData({...formData, topic: e.target.value})}
+            placeholder="Describe the topic for quiz questions..."
+            className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 min-h-[100px]"
+            required
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Number of Questions</label>
+            <select
+              value={formData.num_questions}
+              onChange={(e) => setFormData({...formData, num_questions: parseInt(e.target.value)})}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value={5}>5 Questions</option>
+              <option value={10}>10 Questions</option>
+              <option value={15}>15 Questions</option>
+              <option value={20}>20 Questions</option>
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Difficulty</label>
+            <select
+              value={formData.difficulty}
+              onChange={(e) => setFormData({...formData, difficulty: e.target.value})}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+        >
+          {loading ? 'Generating Quiz...' : 'Generate AI Quiz'}
+        </button>
+      </form>
+    </div>
+  );
+};
+
+// Students Management Component (for teachers)
+const StudentsManagement = () => {
+  return (
+    <div className="p-6">
+      <h1 className="text-3xl font-bold text-gray-900 mb-6">Students Management</h1>
+      <div className="bg-white rounded-xl p-8 shadow-sm border text-center">
+        <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+        <p className="text-gray-500 text-lg">Student management features</p>
+        <p className="text-gray-400">Coming soon in next update</p>
+      </div>
+    </div>
+  );
+};
+
+// My Children Component (for parents)
+const MyChildren = () => {
+  const [children, setChildren] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchChildren();
+  }, []);
+
+  const fetchChildren = async () => {
+    try {
+      const response = await axios.get('/parent/students');
+      setChildren(response.data.students);
+    } catch (error) {
+      toast.error('Failed to load children data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) return <div className="p-6">Loading children data...</div>;
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">My Children</h1>
+        <p className="text-gray-600">Monitor your children's educational progress</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {children.map((child) => (
+          <div key={child.id} className="bg-white rounded-xl p-6 shadow-sm border hover:shadow-lg transition-shadow">
+            <div className="flex items-center space-x-4 mb-4">
+              <div className="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center">
+                <User className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">{child.name}</h3>
+                <p className="text-gray-600 text-sm">{child.email}</p>
+              </div>
+            </div>
+            
+            <div className="space-y-2 text-sm mb-4">
+              <p><span className="font-medium">Student ID:</span> {child.id}</p>
+              <p><span className="font-medium">Role:</span> {child.role}</p>
+              <p><span className="font-medium">Joined:</span> {new Date(child.created_at).toLocaleDateString()}</p>
+            </div>
+            
+            <button className="w-full bg-emerald-500 text-white py-2 rounded-lg hover:bg-emerald-600 transition-colors">
+              View Progress
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Progress Reports Component (for parents)
+const ProgressReports = () => {
+  const [selectedChild, setSelectedChild] = useState('');
+  const [children, setChildren] = useState([]);
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetchChildren();
+  }, []);
+
+  const fetchChildren = async () => {
+    try {
+      const response = await axios.get('/parent/students');
+      setChildren(response.data.students);
+    } catch (error) {
+      toast.error('Failed to load children');
+    }
+  };
+
+  const generateReport = async () => {
+    if (!selectedChild) return;
+    
+    setLoading(true);
+    try {
+      const response = await axios.get(`/parent/progress-report/${selectedChild}`);
+      setReport(response.data);
+    } catch (error) {
+      toast.error('Failed to generate report');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Progress Reports</h1>
+        <p className="text-gray-600">Generate comprehensive progress reports for your children</p>
+      </div>
+
+      {/* Child Selection */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Child</h3>
+        <div className="flex gap-4">
+          <select
+            value={selectedChild}
+            onChange={(e) => setSelectedChild(e.target.value)}
+            className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          >
+            <option value="">Select a child...</option>
+            {children.map((child) => (
+              <option key={child.id} value={child.id}>{child.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={generateReport}
+            disabled={!selectedChild || loading}
+            className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+          >
+            {loading ? 'Generating...' : 'Generate Report'}
+          </button>
+        </div>
+      </div>
+
+      {/* Progress Report Display */}
+      {report && (
+        <div className="space-y-6">
+          {/* Student Info */}
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">Student Information</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-gray-600">Name</p>
+                <p className="font-medium">{report.student_info.name}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Email</p>
+                <p className="font-medium">{report.student_info.email}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Overall Performance */}
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">Overall Performance</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-emerald-600">{report.overall_performance.total_quizzes}</p>
+                <p className="text-gray-600">Quizzes Taken</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-blue-600">{report.overall_performance.average_score}%</p>
+                <p className="text-gray-600">Average Score</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-purple-600">{report.overall_performance.total_questions_asked}</p>
+                <p className="text-gray-600">Questions Asked</p>
+              </div>
+              <div className="text-center">
+                <p className={`text-2xl font-bold ${report.overall_performance.performance_trend === 'improving' ? 'text-green-600' : 'text-orange-600'}`}>
+                  {report.overall_performance.performance_trend === 'improving' ? '↗️' : '⚠️'}
+                </p>
+                <p className="text-gray-600">Trend</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Subject Performance */}
+          {Object.keys(report.subject_performance || {}).length > 0 && (
+            <div className="bg-white rounded-xl p-6 shadow-sm border">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">Subject Performance</h3>
+              <div className="space-y-4">
+                {Object.entries(report.subject_performance).map(([subject, stats]) => (
+                  <div key={subject} className="p-4 bg-gray-50 rounded-lg">
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="font-medium text-gray-900">{subject}</h4>
+                      <span className="text-lg font-bold text-emerald-600">{stats.average_score.toFixed(1)}%</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-gray-600">
+                      <span>Attempts: {stats.attempts}</span>
+                      <span>Latest: {stats.latest_score}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* AI Insights */}
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">AI Insights & Recommendations</h3>
+            <div className="prose max-w-none">
+              <p className="text-gray-700">{report.ai_insights}</p>
+            </div>
+          </div>
+
+          {/* Learning Path */}
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">Learning Assessment</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">Current Level</h4>
+                <p className="text-emerald-600 font-semibold capitalize">{report.learning_path.current_level}</p>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">Strong Areas</h4>
+                <div className="space-y-1">
+                  {report.learning_path.strong_areas.map((area, idx) => (
+                    <p key={idx} className="text-green-600 text-sm">{area}</p>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">Improvement Areas</h4>
+                <div className="space-y-1">
+                  {report.learning_path.weak_areas.map((area, idx) => (
+                    <p key={idx} className="text-orange-600 text-sm">{area}</p>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Main Dashboard Component
 const Dashboard = () => {
   const { user } = useAuth();
