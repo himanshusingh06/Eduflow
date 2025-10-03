@@ -2269,7 +2269,7 @@ const ProgressReports = () => {
 
   const fetchChildren = async () => {
     try {
-      const response = await axios.get('/parent/students');
+      const response = await axios.get('/api/parent/students');
       setChildren(response.data.students);
     } catch (error) {
       toast.error('Failed to load children');
