@@ -11,7 +11,12 @@ from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timedelta
 import jwt
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+import google.generativeai as genai
+from fastapi import UploadFile, File
+import PyPDF2
+import io
+import chromadb
+from sentence_transformers import SentenceTransformer
 import json
 
 ROOT_DIR = Path(__file__).parent
