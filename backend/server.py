@@ -1694,6 +1694,226 @@ async def payment_failure_page(transaction_id: str = None):
         "redirect_to": f"{CALLBACK_BASE_URL}?payment=failed"
     }
 
+# ============= FILE UPLOAD ROUTES =============
+
+@api_router.post("/teacher/upload-material")
+async def upload_study_material(
+    file: UploadFile = File(...),
+    subject: str = None,
+    grade_level: str = None,
+    description: str = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Upload study material files (PDF) for teachers"""
+    try:
+        if current_user.role != "teacher":
+            raise HTTPException(status_code=403, detail="Teacher access required")
+        
+        # Validate file type
+        if not file.filename.lower().endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported")
+        
+        # Read file content
+        file_content = await file.read()
+        file_size = len(file_content)
+        
+        # Generate unique filename
+        file_id = str(uuid.uuid4())
+        filename = f"{file_id}_{file.filename}"
+        
+        # Create study material record
+        study_material = StudyMaterial(
+            filename=filename,
+            original_filename=file.filename,
+            file_type="pdf",
+            file_size=file_size,
+            uploaded_by=current_user.id,
+            subject=subject or "General",
+            grade_level=grade_level or "General",
+            description=description or f"Study material: {file.filename}",
+            file_path=f"/uploads/{filename}",
+            is_processed=False
+        )
+        
+        await db.study_materials.insert_one(study_material.dict())
+        
+        # Process PDF for RAG system
+        pages_text = await extract_text_from_pdf(file_content)
+        
+        if pages_text:
+            success = await create_rag_embeddings(study_material.id, pages_text)
+            if success:
+                await db.study_materials.update_one(
+                    {"id": study_material.id},
+                    {"$set": {"is_processed": True}}
+                )
+        
+        return {
+            "success": True,
+            "material_id": study_material.id,
+            "message": f"Study material uploaded and processed successfully",
+            "pages_processed": len(pages_text)
+        }
+        
+    except Exception as e:
+        logging.error(f"File upload error: {e}")
+        raise HTTPException(status_code=500, detail=f"File upload failed: {str(e)}")
+
+@api_router.get("/teacher/my-materials")
+async def get_teacher_materials(current_user: User = Depends(get_current_user)):
+    """Get materials uploaded by teacher"""
+    try:
+        if current_user.role != "teacher":
+            raise HTTPException(status_code=403, detail="Teacher access required")
+        
+        materials = await db.study_materials.find({"uploaded_by": current_user.id}).to_list(100)
+        return {"materials": materials}
+        
+    except Exception as e:
+        logging.error(f"Get materials error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============= RAG SYSTEM ROUTES =============
+
+@api_router.post("/rag/ask")
+async def rag_question(
+    query_request: RAGQueryRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Ask questions based on uploaded course materials"""
+    try:
+        answer = await query_rag_system(
+            query_request.question,
+            query_request.subject,
+            query_request.grade_level
+        )
+        
+        # Save question for tracking
+        question_record = Question(
+            student_id=current_user.id,
+            question=query_request.question,
+            subject=query_request.subject or "General",
+            answer=answer,
+            answered_by="RAG_AI"
+        )
+        
+        await db.questions.insert_one(question_record.dict())
+        
+        return {
+            "question": query_request.question,
+            "answer": answer,
+            "source": "course_materials",
+            "answered_at": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logging.error(f"RAG question error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/materials/available")
+async def get_available_materials(current_user: User = Depends(get_current_user)):
+    """Get available study materials"""
+    try:
+        materials = await db.study_materials.find({"is_processed": True}).to_list(100)
+        return {"materials": materials}
+        
+    except Exception as e:
+        logging.error(f"Get available materials error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============= NOTES ROUTES =============
+
+@api_router.post("/notes/create")
+async def create_note(
+    title: str,
+    content: str,
+    subject: str,
+    tags: List[str] = [],
+    current_user: User = Depends(get_current_user)
+):
+    """Create a new note"""
+    try:
+        note = StudentNote(
+            student_id=current_user.id,
+            title=title,
+            content=content,
+            subject=subject,
+            tags=tags
+        )
+        
+        await db.student_notes.insert_one(note.dict())
+        
+        return {"success": True, "note_id": note.id, "message": "Note created successfully"}
+        
+    except Exception as e:
+        logging.error(f"Note creation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/notes/my-notes")
+async def get_my_notes(current_user: User = Depends(get_current_user)):
+    """Get all notes for current user"""
+    try:
+        notes = await db.student_notes.find({"student_id": current_user.id}).sort("updated_at", -1).to_list(100)
+        return {"notes": notes}
+        
+    except Exception as e:
+        logging.error(f"Get notes error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/notes/summarize")
+async def summarize_note(
+    summary_request: NoteSummaryRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Summarize notes using AI"""
+    try:
+        summary = await summarize_notes(
+            summary_request.note_content,
+            summary_request.summary_type
+        )
+        
+        return {
+            "original_length": len(summary_request.note_content),
+            "summary": summary,
+            "summary_type": summary_request.summary_type,
+            "generated_at": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logging.error(f"Note summarization error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============= QUIZ ANALYSIS ROUTES =============
+
+@api_router.get("/quiz/analysis/{attempt_id}")
+async def get_quiz_analysis(
+    attempt_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get AI analysis for quiz attempt"""
+    try:
+        analysis = await db.quiz_analysis.find_one({"attempt_id": attempt_id})
+        
+        if not analysis:
+            # Get attempt details to create analysis
+            attempt = await db.quiz_attempts.find_one({"id": attempt_id})
+            if not attempt:
+                raise HTTPException(status_code=404, detail="Quiz attempt not found")
+            
+            # Generate analysis
+            quiz_analysis = await analyze_quiz_result(
+                attempt["student_id"],
+                attempt["quiz_id"],
+                attempt_id
+            )
+            analysis = quiz_analysis.dict()
+        
+        return analysis
+        
+    except Exception as e:
+        logging.error(f"Quiz analysis error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ============= PERSONALIZED LEARNING ROUTES =============
 
 @api_router.get("/learning-path")
