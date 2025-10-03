@@ -1837,9 +1837,14 @@ const FileUpload = () => {
       formData.append('grade_level', uploadForm.grade_level);
       formData.append('description', uploadForm.description || `Study material: ${file.name}`);
 
-      const response = await axios.post('/api/teacher/upload-material', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const config = {
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          ...axios.defaults.headers.common 
+        }
+      };
+      
+      const response = await axios.post('/api/teacher/upload-material', formData, config);
 
       toast.success(`File uploaded and processed! ${response.data.pages_processed} pages extracted.`);
       fetchMaterials();
