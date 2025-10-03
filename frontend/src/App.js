@@ -1057,28 +1057,67 @@ const QuizSystem = () => {
 const AskAI = () => {
   const [question, setQuestion] = useState('');
   const [subject, setSubject] = useState('Mathematics');
+  const [gradeLevel, setGradeLevel] = useState('Grade 8');
+  const [queryType, setQueryType] = useState('rag'); // 'rag' or 'general'
   const [loading, setLoading] = useState(false);
   const [conversation, setConversation] = useState([]);
+  const [availableMaterials, setAvailableMaterials] = useState([]);
+
+  useEffect(() => {
+    fetchAvailableMaterials();
+  }, []);
+
+  const fetchAvailableMaterials = async () => {
+    try {
+      const response = await axios.get('/api/materials/available');
+      setAvailableMaterials(response.data.materials || []);
+    } catch (error) {
+      console.error('Failed to load materials:', error);
+    }
+  };
 
   const askQuestion = async () => {
     if (!question.trim()) return;
 
     setLoading(true);
     try {
-      const response = await axios.post('/qa/ask', {
-        question: question,
-        subject: subject
-      });
+      let response;
+      
+      if (queryType === 'rag') {
+        // Use RAG system for course material-based answers
+        response = await axios.post('/api/rag/ask', {
+          question: question,
+          subject: subject,
+          grade_level: gradeLevel
+        });
+      } else {
+        // Use general AI for broader questions
+        response = await axios.post('/api/qa/ask', {
+          question: question,
+          subject: subject
+        });
+      }
 
       setConversation(prev => [
         ...prev,
-        { type: 'question', text: question, timestamp: new Date() },
-        { type: 'answer', text: response.data.answer, timestamp: new Date() }
+        { 
+          type: 'question', 
+          text: question, 
+          timestamp: new Date(),
+          queryType: queryType
+        },
+        { 
+          type: 'answer', 
+          text: response.data.answer, 
+          timestamp: new Date(),
+          source: queryType === 'rag' ? 'course_materials' : 'ai_tutor'
+        }
       ]);
       
       setQuestion('');
       toast.success('Question answered successfully!');
     } catch (error) {
+      console.error('Question error:', error);
       toast.error('Failed to get answer');
     } finally {
       setLoading(false);
