@@ -803,7 +803,7 @@ async def generate_quiz_route(
     
     return quiz
 
-@api_router.get("/quiz/list", response_model=List[Quiz])
+@api_router.get("/quiz/list")
 async def get_quizzes(
     subject: Optional[str] = None,
     current_user: User = Depends(get_current_user)
@@ -811,11 +811,21 @@ async def get_quizzes(
     query = {}
     if subject:
         query["subject"] = subject
+    
+    # Teachers see only their quizzes, students see all quizzes
     if current_user.role == "teacher":
         query["created_by"] = current_user.id
         
     quizzes = await db.quizzes.find(query).to_list(100)
-    return [Quiz(**quiz) for quiz in quizzes]
+    
+    # Clean ObjectId from response
+    clean_quizzes = []
+    for quiz in quizzes:
+        if "_id" in quiz:
+            del quiz["_id"]
+        clean_quizzes.append(quiz)
+    
+    return clean_quizzes
 
 @api_router.post("/quiz/{quiz_id}/attempt", response_model=QuizAttempt)
 async def submit_quiz_attempt(
