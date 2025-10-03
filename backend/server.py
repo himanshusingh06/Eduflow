@@ -38,6 +38,14 @@ PASSWORD_SALT = "eduagent_salt_2024"
 
 # AI Integration
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+# Configure Gemini
+genai.configure(api_key=GEMINI_API_KEY)
+
+# Initialize vector database and sentence transformer
+chroma_client = chromadb.Client()
+sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # Razorpay Configuration
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID")
