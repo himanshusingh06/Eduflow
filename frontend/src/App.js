@@ -1275,8 +1275,8 @@ const SubscriptionManagement = () => {
   const fetchSubscriptionData = async () => {
     try {
       const [subResponse, plansResponse] = await Promise.all([
-        axios.get('/my-subscription'),
-        axios.get('/subscription-plans')
+        axios.get('/api/my-subscription'),
+        axios.get('/api/subscription-plans')
       ]);
       
       setSubscription(subResponse.data);
