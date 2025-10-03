@@ -1990,7 +1990,7 @@ const NotesManager = () => {
   const fetchNotes = async () => {
     setLoading(true);
     try {
-      const response = await axios.get('/api/notes/my-notes');
+      const response = await axios.get('/notes/my-notes');
       setNotes(response.data.notes || []);
     } catch (error) {
       toast.error('Failed to load notes');
