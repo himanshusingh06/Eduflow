@@ -1309,36 +1309,23 @@ async def get_my_subscription(current_user: User = Depends(get_current_user)):
         logging.error(f"Subscription check error: {e}")
         return {"has_subscription": False, "error": str(e)}
 
-# Mock payment success endpoint (for testing)
-@api_router.get("/mock-payment/{transaction_id}")
-async def mock_payment_success(transaction_id: str):
-    """Mock payment success page for testing"""
-    try:
-        # Update payment status
-        await db.payments.update_one(
-            {"transaction_id": transaction_id},
-            {"$set": {"status": "SUCCESS", "updated_at": datetime.utcnow()}}
-        )
-        
-        return {"message": "Payment completed successfully", "transaction_id": transaction_id}
-    except Exception as e:
-        logging.error(f"Mock payment error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+@api_router.get("/payment-success")
+async def payment_success_page(transaction_id: str = None):
+    """Payment success redirect page"""
+    return {
+        "message": "Payment completed successfully!",
+        "transaction_id": transaction_id,
+        "redirect_to": f"{CALLBACK_BASE_URL}?payment=success"
+    }
 
-@api_router.get("/mock-mandate/{subscription_id}")
-async def mock_mandate_success(subscription_id: str):
-    """Mock subscription mandate success for testing"""
-    try:
-        # Update subscription status
-        await db.subscriptions.update_one(
-            {"id": subscription_id},
-            {"$set": {"status": "ACTIVE", "updated_at": datetime.utcnow()}}
-        )
-        
-        return {"message": "Subscription activated successfully", "subscription_id": subscription_id}
-    except Exception as e:
-        logging.error(f"Mock mandate error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+@api_router.get("/payment-failure") 
+async def payment_failure_page(transaction_id: str = None):
+    """Payment failure redirect page"""
+    return {
+        "message": "Payment failed. Please try again.",
+        "transaction_id": transaction_id,
+        "redirect_to": f"{CALLBACK_BASE_URL}?payment=failed"
+    }
 
 # ============= PERSONALIZED LEARNING ROUTES =============
 
