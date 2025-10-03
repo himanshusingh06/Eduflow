@@ -1207,9 +1207,12 @@ async def get_learning_path(current_user: User = Depends(get_current_user)):
         logging.error(f"Learning path error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to generate learning path: {str(e)}")
 
+class LearningProgressUpdate(BaseModel):
+    completed_topic: str
+
 @api_router.post("/update-learning-progress")
 async def update_learning_progress(
-    completed_topic: str,
+    progress_data: LearningProgressUpdate,
     current_user: User = Depends(get_current_user)
 ):
     """Update learning progress when student completes a topic"""
