@@ -723,25 +723,36 @@ class EduAgentTester:
             self.log_result("Empty RAG Query Handling", False, "Should validate query content")
     
     async def run_all_tests(self):
-        """Run all test suites"""
-        print("🚀 Starting EduAgent Backend API Tests")
-        print("=" * 50)
+        """Run all test suites focusing on new Gemini AI features"""
+        print("🚀 Starting EduAgent Advanced AI Features Testing")
+        print("🔬 Focus: Direct Gemini Integration & Enhanced AI Features")
+        print("=" * 60)
         
         try:
             await self.register_and_login_users()
+            
+            # Priority tests for new Gemini AI features
+            await self.test_gemini_ai_integration()
+            await self.test_agentic_quiz_analysis()
+            await self.test_rag_system()
+            await self.test_notes_management()
+            await self.test_enhanced_learning_features()
+            await self.test_authentication_and_roles()
+            await self.test_error_handling()
+            
+            # Legacy tests (reduced priority)
             await self.test_payment_system()
             await self.test_personalized_learning()
             await self.test_parent_progress_reporting()
             await self.test_role_based_access()
-            await self.test_ai_integration()
             
         except Exception as e:
             self.log_result("Test Suite", False, f"Test suite failed with error: {str(e)}")
         
         # Print summary
-        print("\n" + "=" * 50)
-        print("📊 TEST SUMMARY")
-        print("=" * 50)
+        print("\n" + "=" * 60)
+        print("📊 ADVANCED AI FEATURES TEST SUMMARY")
+        print("=" * 60)
         
         total_tests = len(self.test_results)
         passed_tests = sum(1 for result in self.test_results if result["success"])
@@ -751,6 +762,18 @@ class EduAgentTester:
         print(f"✅ Passed: {passed_tests}")
         print(f"❌ Failed: {failed_tests}")
         print(f"Success Rate: {(passed_tests/total_tests)*100:.1f}%")
+        
+        # Categorize results by feature area
+        gemini_tests = [r for r in self.test_results if "gemini" in r["test"].lower()]
+        rag_tests = [r for r in self.test_results if "rag" in r["test"].lower()]
+        notes_tests = [r for r in self.test_results if "note" in r["test"].lower()]
+        analysis_tests = [r for r in self.test_results if "analysis" in r["test"].lower()]
+        
+        print(f"\n🎯 Feature Breakdown:")
+        print(f"  Gemini AI: {sum(1 for t in gemini_tests if t['success'])}/{len(gemini_tests)} passed")
+        print(f"  RAG System: {sum(1 for t in rag_tests if t['success'])}/{len(rag_tests)} passed")
+        print(f"  Notes Management: {sum(1 for t in notes_tests if t['success'])}/{len(notes_tests)} passed")
+        print(f"  Quiz Analysis: {sum(1 for t in analysis_tests if t['success'])}/{len(analysis_tests)} passed")
         
         if failed_tests > 0:
             print("\n🔍 FAILED TESTS:")
