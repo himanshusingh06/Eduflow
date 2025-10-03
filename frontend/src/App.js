@@ -1128,24 +1128,70 @@ const AskAI = () => {
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Ask AI Tutor</h1>
-        <p className="text-gray-600">Get instant answers to your academic questions</p>
+        <p className="text-gray-600">Get answers from course materials or general AI tutoring</p>
       </div>
+
+      {/* Available Materials Info */}
+      {availableMaterials.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <h3 className="font-medium text-blue-900 mb-2">Available Course Materials</h3>
+          <div className="space-y-1">
+            {availableMaterials.slice(0, 3).map((material) => (
+              <p key={material.id} className="text-blue-700 text-sm">
+                📄 {material.original_filename} ({material.subject})
+              </p>
+            ))}
+            {availableMaterials.length > 3 && (
+              <p className="text-blue-700 text-sm">+ {availableMaterials.length - 3} more materials</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Question Input */}
       <div className="bg-white rounded-xl p-6 shadow-sm border space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
-          <select
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
-          >
-            <option value="Mathematics">Mathematics</option>
-            <option value="Science">Science</option>
-            <option value="English">English</option>
-            <option value="History">History</option>
-            <option value="Geography">Geography</option>
-          </select>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Query Type</label>
+            <select
+              value={queryType}
+              onChange={(e) => setQueryType(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="rag">Course Materials</option>
+              <option value="general">General AI Tutor</option>
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+            <select
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Mathematics">Mathematics</option>
+              <option value="Science">Science</option>
+              <option value="English">English</option>
+              <option value="History">History</option>
+              <option value="Geography">Geography</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
+            <select
+              value={gradeLevel}
+              onChange={(e) => setGradeLevel(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Grade 6">Grade 6</option>
+              <option value="Grade 7">Grade 7</option>
+              <option value="Grade 8">Grade 8</option>
+              <option value="Grade 9">Grade 9</option>
+              <option value="Grade 10">Grade 10</option>
+            </select>
+          </div>
         </div>
 
         <div>
@@ -1153,7 +1199,9 @@ const AskAI = () => {
           <textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Ask your question here..."
+            placeholder={queryType === 'rag' 
+              ? "Ask a question about your course materials..." 
+              : "Ask any academic question..."}
             className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 min-h-[100px]"
           />
         </div>
@@ -1163,7 +1211,7 @@ const AskAI = () => {
           disabled={loading || !question.trim()}
           className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          {loading ? 'Getting Answer...' : 'Ask Question'}
+          {loading ? 'Getting Answer...' : (queryType === 'rag' ? 'Ask Course Materials' : 'Ask AI Tutor')}
         </button>
       </div>
 
