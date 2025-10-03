@@ -477,7 +477,7 @@ def verify_razorpay_signature(order_id: str, payment_id: str, signature: str) ->
         return False
 
 async def generate_personalized_learning_path(student_id: str) -> LearningPath:
-    """Generate personalized learning path using AI"""
+    """Generate personalized learning path using Gemini AI"""
     try:
         # Get student's quiz history and performance
         attempts = await db.quiz_attempts.find({"student_id": student_id}).to_list(100)
@@ -494,27 +494,41 @@ async def generate_personalized_learning_path(student_id: str) -> LearningPath:
                 subject_performance[subject]["scores"].append(attempt["percentage"])
         
         # Generate AI-powered recommendations
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"learning_path_{student_id}",
-            system_message="You are an AI learning advisor. Analyze student performance and create personalized learning recommendations."
-        ).with_model("gemini", "gemini-2.5-pro")
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         performance_summary = f"Student Performance Analysis:\n"
         for subject, data in subject_performance.items():
             avg_score = sum(data["scores"]) / len(data["scores"]) if data["scores"] else 0
             performance_summary += f"- {subject}: Average {avg_score:.1f}%\n"
         
-        user_message = UserMessage(
-            text=f"{performance_summary}\n\nPlease provide:\n1. Current learning level assessment\n2. 5 recommended topics to study next\n3. 3 areas that need improvement\n4. 3 areas of strength\n\nFormat as JSON with keys: current_level, recommended_topics, weak_areas, strong_areas"
-        )
+        if not performance_summary.strip().endswith("Analysis:"):
+            performance_summary += f"- Total Questions Asked: {len(questions)}\n"
+            performance_summary += f"- Total Quizzes Taken: {len(attempts)}\n"
         
-        response = await chat.send_message(user_message)
+        prompt = f"""Analyze this student's performance and create personalized learning recommendations:
+
+{performance_summary}
+
+Please provide a JSON response with:
+1. "current_level": Assessment of student's level (beginner/intermediate/advanced)
+2. "recommended_topics": Array of 5 topics to study next
+3. "weak_areas": Array of 3 areas that need improvement  
+4. "strong_areas": Array of 3 areas where student excels
+
+Format as valid JSON:
+{{
+  "current_level": "intermediate",
+  "recommended_topics": ["topic1", "topic2", "topic3", "topic4", "topic5"],
+  "weak_areas": ["area1", "area2", "area3"],
+  "strong_areas": ["area1", "area2", "area3"]
+}}"""
+
+        response = model.generate_content(prompt)
         
         # Parse AI response (with fallback)
         try:
             import re
-            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
             if json_match:
                 ai_recommendations = json.loads(json_match.group())
             else:
