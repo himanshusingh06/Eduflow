@@ -2006,7 +2006,7 @@ const NotesManager = () => {
     }
 
     try {
-      const response = await axios.post('/api/notes/create', newNote, {
+      const response = await axios.post('/notes/create', newNote, {
         headers: { 'Content-Type': 'application/json' }
       });
       toast.success('Note created successfully!');
