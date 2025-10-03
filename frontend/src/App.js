@@ -1439,7 +1439,7 @@ const PersonalizedLearning = () => {
 
   const markTopicComplete = async (topic) => {
     try {
-      await axios.post('/api/update-learning-progress', null, {
+      await axios.post('/update-learning-progress', null, {
         params: { completed_topic: topic }
       });
       
