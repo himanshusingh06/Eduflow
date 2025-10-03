@@ -309,7 +309,7 @@ const StudentDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const response = await axios.get('/api/dashboard/student');
+      const response = await axios.get('/dashboard/student');
       setDashboardData(response.data);
     } catch (error) {
       toast.error('Failed to load dashboard');
