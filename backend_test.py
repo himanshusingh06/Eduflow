@@ -154,7 +154,7 @@ class EduAgentTester:
             "description": "Test payment for premium access",
             "payment_type": "one_time"
         }
-        success, response = await self.make_request("POST", "/create-payment", payment_data, student_token)
+        success, response = await self.make_request("POST", "/create-order", payment_data, student_token)
         
         transaction_id = None
         if success and response.get("success"):
