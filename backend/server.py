@@ -34,13 +34,10 @@ PASSWORD_SALT = "eduagent_salt_2024"
 # AI Integration
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
 
-# PhonePe Configuration
-PHONEPE_CLIENT_ID = os.environ.get("PHONEPE_CLIENT_ID")
-PHONEPE_CLIENT_SECRET = os.environ.get("PHONEPE_CLIENT_SECRET")
-PHONEPE_ENVIRONMENT = os.environ.get("PHONEPE_ENVIRONMENT", "SANDBOX")
-PHONEPE_MERCHANT_ID = os.environ.get("PHONEPE_MERCHANT_ID")
-WEBHOOK_USERNAME = os.environ.get("WEBHOOK_USERNAME")
-WEBHOOK_PASSWORD = os.environ.get("WEBHOOK_PASSWORD")
+# Razorpay Configuration
+RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID")
+RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET") 
+RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET")
 CALLBACK_BASE_URL = os.environ.get("CALLBACK_BASE_URL")
 
 # Create the main app
