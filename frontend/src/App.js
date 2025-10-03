@@ -924,6 +924,7 @@ const SubscriptionManagement = () => {
 
   const subscribeToPlan = async (planId) => {
     try {
+      // Create subscription order
       const response = await axios.post('/create-subscription', {
         student_id: 'current_user', // This would be handled by backend
         plan_id: planId,
@@ -931,9 +932,41 @@ const SubscriptionManagement = () => {
       });
 
       if (response.data.success) {
-        // Redirect to PhonePe payment
-        window.open(response.data.mandate_url, '_blank');
-        toast.success('Subscription created! Complete the payment to activate.');
+        // Initialize Razorpay payment
+        const options = {
+          key: response.data.key_id,
+          amount: response.data.amount,
+          currency: response.data.currency,
+          name: 'EduAgent - Learning Platform',
+          description: 'Monthly Premium Subscription',
+          order_id: response.data.order_id,
+          handler: async function (razorpayResponse) {
+            try {
+              // Verify payment
+              await axios.post('/verify-payment', {
+                order_id: razorpayResponse.razorpay_order_id,
+                payment_id: razorpayResponse.razorpay_payment_id,
+                signature: razorpayResponse.razorpay_signature
+              });
+              
+              toast.success('Subscription activated successfully!');
+              fetchSubscriptionData(); // Refresh subscription data
+            } catch (error) {
+              toast.error('Payment verification failed');
+            }
+          },
+          prefill: {
+            name: 'Student Name',
+            email: 'student@example.com',
+            contact: '9999999999'
+          },
+          theme: {
+            color: '#10b981'
+          }
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.open();
       }
     } catch (error) {
       toast.error('Failed to create subscription');
