@@ -181,7 +181,8 @@ const Sidebar = ({ activeTab, setActiveTab, user, isMobileOpen, setIsMobileOpen 
         ...commonItems,
         { id: 'study', label: 'Study Content', icon: BookOpen },
         { id: 'quiz', label: 'Quizzes', icon: PenTool },
-        { id: 'ask', label: 'Ask Question', icon: Brain },
+        { id: 'ask', label: 'Ask AI', icon: Brain },
+        { id: 'notes', label: 'My Notes', icon: BookOpen },
         { id: 'learning-path', label: 'Learning Path', icon: Brain },
         { id: 'subscription', label: 'Subscription', icon: GraduationCap },
       ];
