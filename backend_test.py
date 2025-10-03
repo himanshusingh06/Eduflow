@@ -416,9 +416,9 @@ class EduAgentTester:
         
         # Submit quiz attempt with some wrong answers for analysis
         attempt_data = {
-            0: 1,  # Assume wrong answer
-            1: 0,  # Assume correct answer  
-            2: 2   # Assume wrong answer
+            "0": 1,  # Assume wrong answer
+            "1": 0,  # Assume correct answer  
+            "2": 2   # Assume wrong answer
         }
         
         success, attempt_response = await self.make_request("POST", f"/quiz/{quiz_id}/attempt", attempt_data, student_token)
