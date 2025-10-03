@@ -2458,6 +2458,10 @@ const Dashboard = () => {
         return <SubscriptionManagement />;
       case 'learning-path':
         return <PersonalizedLearning />;
+      case 'notes':
+        return <NotesManager />;
+      case 'upload-materials':
+        return <FileUpload />;
       case 'chat':
         return <div className="p-6">Messages - Coming Soon (WhatsApp Integration)</div>;
       default:
