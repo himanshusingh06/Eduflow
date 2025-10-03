@@ -32,7 +32,7 @@ const AuthProvider = ({ children }) => {
 
   const fetchCurrentUser = async () => {
     try {
-      const response = await axios.get('/api/auth/me');
+      const response = await axios.get('/auth/me');
       setUser(response.data);
     } catch (error) {
       console.error('Failed to fetch current user:', error);
