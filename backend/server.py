@@ -1987,7 +1987,7 @@ async def save_student_profile(
             upsert=True
         )
         
-        return {"success": True, "message": "Profile saved successfully"}
+        return {"success": True, "profile_id": current_user.id, "message": "Profile saved successfully"}
         
     except Exception as e:
         logging.error(f"Profile save error: {e}")
