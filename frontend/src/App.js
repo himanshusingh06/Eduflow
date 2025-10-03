@@ -1088,7 +1088,7 @@ const AskAI = () => {
       
       if (queryType === 'rag') {
         // Use RAG system for course material-based answers
-        response = await axios.post('/api/rag/ask', {
+        response = await axios.post('/rag/ask', {
           question: question,
           subject: subject,
           grade_level: gradeLevel
