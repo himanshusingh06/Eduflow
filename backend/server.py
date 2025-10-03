@@ -361,71 +361,27 @@ async def answer_question(question: str, subject: str, grade_level: str = "gener
         logging.error(f"AI answer generation error: {e}")
         return "I'm having trouble generating an answer right now. Please try again or consult your teacher."
 
-# ============= PHONEPE INTEGRATION =============
+# ============= RAZORPAY INTEGRATION =============
 
-class MockPhonePeClient:
-    """Mock PhonePe client for testing purposes"""
-    
-    def __init__(self):
-        self.payments = {}
-        self.subscriptions = {}
-    
-    def create_payment(self, payment_data: dict) -> dict:
-        """Mock payment creation"""
-        transaction_id = payment_data["merchant_transaction_id"]
-        mock_response = {
-            "success": True,
-            "code": "PAYMENT_INITIATED",
-            "message": "Payment initiated successfully",
-            "data": {
-                "merchant_transaction_id": transaction_id,
-                "transaction_id": f"T{uuid.uuid4().hex[:12]}",
-                "redirect_url": f"{CALLBACK_BASE_URL}/mock-payment/{transaction_id}",
-                "order_id": f"ORDER_{uuid.uuid4().hex[:8]}"
-            }
-        }
-        self.payments[transaction_id] = mock_response
-        return mock_response
-    
-    def create_subscription(self, subscription_data: dict) -> dict:
-        """Mock subscription creation"""
-        subscription_id = subscription_data["merchant_subscription_id"]
-        mock_response = {
-            "success": True,
-            "code": "SUBSCRIPTION_INITIATED",
-            "message": "Subscription mandate created",
-            "data": {
-                "merchant_subscription_id": subscription_id,
-                "subscription_id": f"SUB{uuid.uuid4().hex[:10]}",
-                "redirect_url": f"{CALLBACK_BASE_URL}/mock-mandate/{subscription_id}",
-                "order_id": f"SUBORDER_{uuid.uuid4().hex[:8]}"
-            }
-        }
-        self.subscriptions[subscription_id] = mock_response
-        return mock_response
-    
-    def get_payment_status(self, transaction_id: str) -> dict:
-        """Mock payment status check"""
-        if transaction_id in self.payments:
-            return {
-                "success": True,
-                "code": "PAYMENT_SUCCESS",
-                "message": "Payment completed successfully",
-                "data": {
-                    "merchant_transaction_id": transaction_id,
-                    "transaction_id": f"T{uuid.uuid4().hex[:12]}",
-                    "amount": 100000,  # Mock amount
-                    "state": "COMPLETED"
-                }
-            }
-        return {
-            "success": False,
-            "code": "PAYMENT_NOT_FOUND",
-            "message": "Payment not found"
-        }
+import razorpay
+import hmac
+import hashlib
 
-# Initialize mock PhonePe client
-phonepe_mock_client = MockPhonePeClient()
+# Initialize Razorpay client
+razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+
+def verify_razorpay_signature(order_id: str, payment_id: str, signature: str) -> bool:
+    """Verify Razorpay payment signature"""
+    try:
+        params_dict = {
+            'razorpay_order_id': order_id,
+            'razorpay_payment_id': payment_id,
+            'razorpay_signature': signature
+        }
+        razorpay_client.utility.verify_payment_signature(params_dict)
+        return True
+    except razorpay.errors.SignatureVerificationError:
+        return False
 
 async def generate_personalized_learning_path(student_id: str) -> LearningPath:
     """Generate personalized learning path using AI"""
