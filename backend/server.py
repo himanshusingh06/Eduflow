@@ -1936,6 +1936,53 @@ async def get_quiz_analysis(
         logging.error(f"Quiz analysis error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ============= STUDENT PROFILE ROUTES =============
+
+@api_router.get("/student/profile")
+async def get_student_profile(current_user: User = Depends(get_current_user)):
+    """Get student profile"""
+    try:
+        if current_user.role != "student":
+            raise HTTPException(status_code=403, detail="Student access required")
+        
+        profile = await db.student_profiles.find_one({"student_id": current_user.id})
+        
+        if profile and "_id" in profile:
+            del profile["_id"]
+            
+        return {"profile": profile}
+        
+    except Exception as e:
+        logging.error(f"Profile fetch error: {e}")
+        return {"profile": None}
+
+@api_router.post("/student/profile")
+async def save_student_profile(
+    profile_data: dict,
+    current_user: User = Depends(get_current_user)
+):
+    """Save student profile"""
+    try:
+        if current_user.role != "student":
+            raise HTTPException(status_code=403, detail="Student access required")
+        
+        # Add student ID and timestamps
+        profile_data["student_id"] = current_user.id
+        profile_data["updated_at"] = datetime.utcnow()
+        
+        # Upsert profile
+        await db.student_profiles.replace_one(
+            {"student_id": current_user.id},
+            profile_data,
+            upsert=True
+        )
+        
+        return {"success": True, "message": "Profile saved successfully"}
+        
+    except Exception as e:
+        logging.error(f"Profile save error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ============= PERSONALIZED LEARNING ROUTES =============
 
 @api_router.get("/learning-path")
