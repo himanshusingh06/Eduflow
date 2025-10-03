@@ -828,7 +828,7 @@ const QuizSystem = () => {
 
   const submitQuiz = async () => {
     try {
-      const response = await axios.post(`/api/quiz/${selectedQuiz.id}/attempt`, answers);
+      const response = await axios.post(`/quiz/${selectedQuiz.id}/attempt`, answers);
       setQuizResult(response.data);
       
       // Fetch quiz analysis
