@@ -1785,10 +1785,10 @@ async def upload_study_material(
 @api_router.get("/teacher/my-materials")
 async def get_teacher_materials(current_user: User = Depends(get_current_user)):
     """Get materials uploaded by teacher"""
+    if current_user.role != "teacher":
+        raise HTTPException(status_code=403, detail="Teacher access required")
+    
     try:
-        if current_user.role != "teacher":
-            raise HTTPException(status_code=403, detail="Teacher access required")
-        
         materials = await db.study_materials.find({"uploaded_by": current_user.id}).to_list(100)
         return {"materials": materials}
         
