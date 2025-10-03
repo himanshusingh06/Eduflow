@@ -1332,7 +1332,14 @@ async def get_linked_students(current_user: User = Depends(get_current_user)):
         
         # For demo purposes, return all students
         # In real app, you'd have proper parent-child relationships
-        students = await db.users.find({"role": "student"}).to_list(100)
+        students_docs = await db.users.find({"role": "student"}).to_list(100)
+        
+        # Convert to User objects to avoid ObjectId serialization issues
+        students = []
+        for doc in students_docs:
+            # Remove MongoDB ObjectId and password fields
+            clean_doc = {k: v for k, v in doc.items() if k not in ["_id", "password"]}
+            students.append(clean_doc)
         
         return {"students": students}
         
