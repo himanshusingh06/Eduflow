@@ -1888,6 +1888,56 @@ async def get_my_notes(current_user: User = Depends(get_current_user)):
         logging.error(f"Get notes error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.put("/notes/{note_id}")
+async def update_note(
+    note_id: str,
+    note_data: NoteCreateRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Update a note"""
+    try:
+        result = await db.student_notes.update_one(
+            {"id": note_id, "student_id": current_user.id},
+            {
+                "$set": {
+                    "title": note_data.title,
+                    "content": note_data.content,
+                    "subject": note_data.subject,
+                    "tags": note_data.tags,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Note not found")
+        
+        return {"success": True, "message": "Note updated successfully"}
+        
+    except Exception as e:
+        logging.error(f"Note update error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.delete("/notes/{note_id}")
+async def delete_note(
+    note_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a note"""
+    try:
+        result = await db.student_notes.delete_one(
+            {"id": note_id, "student_id": current_user.id}
+        )
+        
+        if result.deleted_count == 0:
+            raise HTTPException(status_code=404, detail="Note not found")
+        
+        return {"success": True, "message": "Note deleted successfully"}
+        
+    except Exception as e:
+        logging.error(f"Note deletion error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.post("/notes/summarize")
 async def summarize_note(
     summary_request: NoteSummaryRequest,
