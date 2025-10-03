@@ -1141,9 +1141,12 @@ async def get_my_subscription(current_user: User = Depends(get_current_user)):
         if not subscription:
             return {"has_subscription": False, "message": "No active subscription"}
         
+        # Remove ObjectId to avoid serialization issues
+        clean_subscription = {k: v for k, v in subscription.items() if k != "_id"}
+        
         return {
             "has_subscription": True,
-            "subscription": subscription,
+            "subscription": clean_subscription,
             "expires_at": subscription["end_date"],
             "is_active": subscription["status"] == "ACTIVE"
         }
