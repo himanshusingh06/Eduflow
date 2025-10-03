@@ -1292,7 +1292,7 @@ const SubscriptionManagement = () => {
   const subscribeToPlan = async (planId) => {
     try {
       // Create subscription order
-      const response = await axios.post('/api/create-subscription', {
+      const response = await axios.post('/create-subscription', {
         student_id: 'current_user', // This would be handled by backend
         plan_id: planId,
         duration_months: 1
