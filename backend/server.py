@@ -364,6 +364,241 @@ async def answer_question(question: str, subject: str, grade_level: str = "gener
         logging.error(f"AI answer generation error: {e}")
         return "I'm having trouble generating an answer right now. Please try again or consult your teacher."
 
+# ============= PHONEPE INTEGRATION =============
+
+class MockPhonePeClient:
+    """Mock PhonePe client for testing purposes"""
+    
+    def __init__(self):
+        self.payments = {}
+        self.subscriptions = {}
+    
+    def create_payment(self, payment_data: dict) -> dict:
+        """Mock payment creation"""
+        transaction_id = payment_data["merchant_transaction_id"]
+        mock_response = {
+            "success": True,
+            "code": "PAYMENT_INITIATED",
+            "message": "Payment initiated successfully",
+            "data": {
+                "merchant_transaction_id": transaction_id,
+                "transaction_id": f"T{uuid.uuid4().hex[:12]}",
+                "redirect_url": f"{CALLBACK_BASE_URL}/mock-payment/{transaction_id}",
+                "order_id": f"ORDER_{uuid.uuid4().hex[:8]}"
+            }
+        }
+        self.payments[transaction_id] = mock_response
+        return mock_response
+    
+    def create_subscription(self, subscription_data: dict) -> dict:
+        """Mock subscription creation"""
+        subscription_id = subscription_data["merchant_subscription_id"]
+        mock_response = {
+            "success": True,
+            "code": "SUBSCRIPTION_INITIATED",
+            "message": "Subscription mandate created",
+            "data": {
+                "merchant_subscription_id": subscription_id,
+                "subscription_id": f"SUB{uuid.uuid4().hex[:10]}",
+                "redirect_url": f"{CALLBACK_BASE_URL}/mock-mandate/{subscription_id}",
+                "order_id": f"SUBORDER_{uuid.uuid4().hex[:8]}"
+            }
+        }
+        self.subscriptions[subscription_id] = mock_response
+        return mock_response
+    
+    def get_payment_status(self, transaction_id: str) -> dict:
+        """Mock payment status check"""
+        if transaction_id in self.payments:
+            return {
+                "success": True,
+                "code": "PAYMENT_SUCCESS",
+                "message": "Payment completed successfully",
+                "data": {
+                    "merchant_transaction_id": transaction_id,
+                    "transaction_id": f"T{uuid.uuid4().hex[:12]}",
+                    "amount": 100000,  # Mock amount
+                    "state": "COMPLETED"
+                }
+            }
+        return {
+            "success": False,
+            "code": "PAYMENT_NOT_FOUND",
+            "message": "Payment not found"
+        }
+
+# Initialize mock PhonePe client
+phonepe_mock_client = MockPhonePeClient()
+
+async def generate_personalized_learning_path(student_id: str) -> LearningPath:
+    """Generate personalized learning path using AI"""
+    try:
+        # Get student's quiz history and performance
+        attempts = await db.quiz_attempts.find({"student_id": student_id}).to_list(100)
+        questions = await db.questions.find({"student_id": student_id}).to_list(100)
+        
+        # Analyze performance by subject
+        subject_performance = {}
+        for attempt in attempts:
+            quiz = await db.quizzes.find_one({"id": attempt["quiz_id"]})
+            if quiz:
+                subject = quiz["subject"]
+                if subject not in subject_performance:
+                    subject_performance[subject] = {"scores": [], "topics": []}
+                subject_performance[subject]["scores"].append(attempt["percentage"])
+        
+        # Generate AI-powered recommendations
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"learning_path_{student_id}",
+            system_message="You are an AI learning advisor. Analyze student performance and create personalized learning recommendations."
+        ).with_model("gemini", "gemini-2.5-pro")
+        
+        performance_summary = f"Student Performance Analysis:\n"
+        for subject, data in subject_performance.items():
+            avg_score = sum(data["scores"]) / len(data["scores"]) if data["scores"] else 0
+            performance_summary += f"- {subject}: Average {avg_score:.1f}%\n"
+        
+        user_message = UserMessage(
+            text=f"{performance_summary}\n\nPlease provide:\n1. Current learning level assessment\n2. 5 recommended topics to study next\n3. 3 areas that need improvement\n4. 3 areas of strength\n\nFormat as JSON with keys: current_level, recommended_topics, weak_areas, strong_areas"
+        )
+        
+        response = await chat.send_message(user_message)
+        
+        # Parse AI response (with fallback)
+        try:
+            import re
+            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            if json_match:
+                ai_recommendations = json.loads(json_match.group())
+            else:
+                raise ValueError("No JSON found")
+        except:
+            # Fallback recommendations
+            ai_recommendations = {
+                "current_level": "intermediate",
+                "recommended_topics": ["Mathematics Review", "Science Fundamentals", "Reading Comprehension", "Problem Solving", "Critical Thinking"],
+                "weak_areas": ["Complex Problem Solving", "Advanced Mathematics", "Scientific Analysis"],
+                "strong_areas": ["Basic Concepts", "Memory Recall", "Pattern Recognition"]
+            }
+        
+        # Create learning path
+        learning_path = LearningPath(
+            student_id=student_id,
+            subject="General",
+            current_level=ai_recommendations.get("current_level", "intermediate"),
+            recommended_topics=ai_recommendations.get("recommended_topics", []),
+            weak_areas=ai_recommendations.get("weak_areas", []),
+            strong_areas=ai_recommendations.get("strong_areas", []),
+            next_recommendations=ai_recommendations.get("recommended_topics", [])[:3]
+        )
+        
+        return learning_path
+        
+    except Exception as e:
+        logging.error(f"Learning path generation error: {e}")
+        # Return default learning path
+        return LearningPath(
+            student_id=student_id,
+            subject="General",
+            current_level="intermediate",
+            recommended_topics=["Basic Mathematics", "Reading Skills", "Science Fundamentals"],
+            weak_areas=["Problem Solving"],
+            strong_areas=["Memory"],
+            next_recommendations=["Practice Problems", "Reading Exercises", "Science Projects"]
+        )
+
+async def generate_progress_report(student_id: str, parent_id: str) -> dict:
+    """Generate comprehensive progress report for parents"""
+    try:
+        # Get student information
+        student = await db.users.find_one({"id": student_id})
+        if not student:
+            raise ValueError("Student not found")
+        
+        # Get performance data
+        quiz_attempts = await db.quiz_attempts.find({"student_id": student_id}).to_list(100)
+        questions_asked = await db.questions.find({"student_id": student_id}).to_list(100)
+        learning_path = await db.learning_paths.find_one({"student_id": student_id})
+        
+        # Calculate statistics
+        total_quizzes = len(quiz_attempts)
+        average_score = sum([attempt["percentage"] for attempt in quiz_attempts]) / total_quizzes if total_quizzes > 0 else 0
+        
+        # Subject-wise performance
+        subject_stats = {}
+        for attempt in quiz_attempts:
+            quiz = await db.quizzes.find_one({"id": attempt["quiz_id"]})
+            if quiz:
+                subject = quiz["subject"]
+                if subject not in subject_stats:
+                    subject_stats[subject] = {"attempts": 0, "total_score": 0, "latest_score": 0}
+                subject_stats[subject]["attempts"] += 1
+                subject_stats[subject]["total_score"] += attempt["percentage"]
+                subject_stats[subject]["latest_score"] = attempt["percentage"]
+        
+        # Calculate averages
+        for subject in subject_stats:
+            subject_stats[subject]["average_score"] = subject_stats[subject]["total_score"] / subject_stats[subject]["attempts"]
+        
+        # Recent activity
+        recent_activities = []
+        for attempt in sorted(quiz_attempts, key=lambda x: x["completed_at"], reverse=True)[:5]:
+            quiz = await db.quizzes.find_one({"id": attempt["quiz_id"]})
+            if quiz:
+                recent_activities.append({
+                    "type": "quiz_attempt",
+                    "title": quiz["title"],
+                    "score": attempt["percentage"],
+                    "date": attempt["completed_at"]
+                })
+        
+        # Generate AI insights
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"progress_report_{student_id}",
+            system_message="You are an educational progress analyst. Provide insights for parents about their child's learning progress."
+        ).with_model("gemini", "gemini-2.5-pro")
+        
+        performance_data = f"Student: {student['name']}\nTotal Quizzes: {total_quizzes}\nAverage Score: {average_score:.1f}%\nQuestions Asked: {len(questions_asked)}"
+        
+        user_message = UserMessage(
+            text=f"{performance_data}\n\nPlease provide a brief progress summary and 3 actionable recommendations for parents to help their child improve. Keep it concise and positive."
+        )
+        
+        ai_insights = await chat.send_message(user_message)
+        
+        return {
+            "student_info": {
+                "name": student["name"],
+                "email": student["email"],
+                "id": student_id
+            },
+            "overall_performance": {
+                "total_quizzes": total_quizzes,
+                "average_score": round(average_score, 2),
+                "total_questions_asked": len(questions_asked),
+                "performance_trend": "improving" if average_score > 70 else "needs_attention"
+            },
+            "subject_performance": subject_stats,
+            "recent_activities": recent_activities,
+            "learning_path": {
+                "current_level": learning_path["current_level"] if learning_path else "Not assessed",
+                "strong_areas": learning_path["strong_areas"] if learning_path else [],
+                "weak_areas": learning_path["weak_areas"] if learning_path else [],
+                "recommended_topics": learning_path["recommended_topics"] if learning_path else []
+            },
+            "ai_insights": ai_insights,
+            "report_generated_at": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logging.error(f"Progress report generation error: {e}")
+        return {
+            "error": "Failed to generate progress report",
+            "message": str(e)
+        }
+
 # ============= AUTH ROUTES =============
 
 @api_router.post("/auth/register", response_model=TokenResponse)
