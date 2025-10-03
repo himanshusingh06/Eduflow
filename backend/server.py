@@ -1864,7 +1864,15 @@ async def get_my_notes(current_user: User = Depends(get_current_user)):
     """Get all notes for current user"""
     try:
         notes = await db.student_notes.find({"student_id": current_user.id}).sort("updated_at", -1).to_list(100)
-        return {"notes": notes}
+        
+        # Clean ObjectId from notes
+        clean_notes = []
+        for note in notes:
+            if "_id" in note:
+                del note["_id"]
+            clean_notes.append(note)
+        
+        return {"notes": clean_notes}
         
     except Exception as e:
         logging.error(f"Get notes error: {e}")
