@@ -423,7 +423,7 @@ const TeacherDashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const response = await axios.get('/dashboard/teacher');
+      const response = await axios.get('/api/dashboard/teacher');
       setDashboardData(response.data);
     } catch (error) {
       toast.error('Failed to load dashboard');
