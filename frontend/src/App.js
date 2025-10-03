@@ -2006,12 +2006,15 @@ const NotesManager = () => {
     }
 
     try {
-      await axios.post('/api/notes/create', newNote);
+      const response = await axios.post('/api/notes/create', newNote, {
+        headers: { 'Content-Type': 'application/json' }
+      });
       toast.success('Note created successfully!');
       setNewNote({ title: '', content: '', subject: 'Mathematics', tags: [] });
       setShowCreateForm(false);
       fetchNotes();
     } catch (error) {
+      console.error('Note creation error:', error);
       toast.error('Failed to create note');
     }
   };
