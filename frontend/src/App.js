@@ -77,7 +77,7 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const endpoint = isLogin ? '/auth/login' : '/auth/register';
+      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
       const response = await axios.post(endpoint, formData);
       
       login(response.data.user, response.data.access_token);
