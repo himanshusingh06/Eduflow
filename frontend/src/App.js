@@ -657,7 +657,7 @@ const StudyContent = () => {
           order_id: response.data.order_id,
           handler: async function (razorpayResponse) {
             try {
-              await axios.post('/verify-payment', {
+              await axios.post('/api/verify-payment', {
                 order_id: razorpayResponse.razorpay_order_id,
                 payment_id: razorpayResponse.razorpay_payment_id,
                 signature: razorpayResponse.razorpay_signature
@@ -1309,7 +1309,7 @@ const SubscriptionManagement = () => {
           handler: async function (razorpayResponse) {
             try {
               // Verify payment
-              await axios.post('/verify-payment', {
+              await axios.post('/api/verify-payment', {
                 order_id: razorpayResponse.razorpay_order_id,
                 payment_id: razorpayResponse.razorpay_payment_id,
                 signature: razorpayResponse.razorpay_signature
