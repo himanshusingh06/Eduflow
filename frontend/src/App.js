@@ -630,7 +630,7 @@ const StudyContent = () => {
       if (filters.subject) params.append('subject', filters.subject);
       if (filters.grade_level) params.append('grade_level', filters.grade_level);
       
-      const response = await axios.get(`/api/study/content?${params}`);
+      const response = await axios.get(`/study/content?${params}`);
       setContent(response.data);
     } catch (error) {
       toast.error('Failed to load content');
