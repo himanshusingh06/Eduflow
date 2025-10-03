@@ -2198,6 +2198,378 @@ const NotesManager = () => {
   );
 };
 
+// Student Profile Component
+const StudentProfile = () => {
+  const [profile, setProfile] = useState({
+    // Personal Info
+    name: '',
+    dob: '',
+    gender: '',
+    grade: '',
+    
+    // School Info
+    school_name: '',
+    school_address: '',
+    school_email: '',
+    
+    // Contact Info
+    parent_email: '',
+    whatsapp_no: '',
+    teacher_email: '',
+    principal_email: '',
+    teacher_phone: '',
+    principal_phone: '',
+    
+    // Additional Info
+    emergency_contact: '',
+    blood_group: '',
+    allergies: '',
+    hobbies: '',
+    subjects_of_interest: []
+  });
+  
+  const [loading, setLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    fetchProfile();
+  }, []);
+
+  const fetchProfile = async () => {
+    try {
+      const response = await axios.get('/api/student/profile');
+      if (response.data.profile) {
+        setProfile(response.data.profile);
+      } else {
+        setIsEditing(true); // No profile exists, start in edit mode
+      }
+    } catch (error) {
+      console.error('Profile fetch error:', error);
+      setIsEditing(true); // Start in edit mode if no profile
+    }
+  };
+
+  const saveProfile = async () => {
+    setLoading(true);
+    try {
+      await axios.post('/api/student/profile', profile);
+      toast.success('Profile saved successfully!');
+      setIsEditing(false);
+    } catch (error) {
+      toast.error('Failed to save profile');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleInputChange = (field, value) => {
+    setProfile({...profile, [field]: value});
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Profile</h1>
+          <p className="text-gray-600">Manage your personal and academic information</p>
+        </div>
+        <div className="flex space-x-2">
+          {!isEditing ? (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600 transition-colors"
+            >
+              Edit Profile
+            </button>
+          ) : (
+            <div className="flex space-x-2">
+              <button
+                onClick={saveProfile}
+                disabled={loading}
+                className="bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+              >
+                {loading ? 'Saving...' : 'Save Profile'}
+              </button>
+              <button
+                onClick={() => {setIsEditing(false); fetchProfile();}}
+                className="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Profile Form */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Personal Information */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Personal Information</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Full Name *</label>
+              <input
+                type="text"
+                value={profile.name}
+                onChange={(e) => handleInputChange('name', e.target.value)}
+                disabled={!isEditing}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date of Birth *</label>
+                <input
+                  type="date"
+                  value={profile.dob}
+                  onChange={(e) => handleInputChange('dob', e.target.value)}
+                  disabled={!isEditing}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Gender *</label>
+                <select
+                  value={profile.gender}
+                  onChange={(e) => handleInputChange('gender', e.target.value)}
+                  disabled={!isEditing}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+                >
+                  <option value="">Select Gender</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Grade *</label>
+              <select
+                value={profile.grade}
+                onChange={(e) => handleInputChange('grade', e.target.value)}
+                disabled={!isEditing}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              >
+                <option value="">Select Grade</option>
+                <option value="Grade 6">Grade 6</option>
+                <option value="Grade 7">Grade 7</option>
+                <option value="Grade 8">Grade 8</option>
+                <option value="Grade 9">Grade 9</option>
+                <option value="Grade 10">Grade 10</option>
+                <option value="Grade 11">Grade 11</option>
+                <option value="Grade 12">Grade 12</option>
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Blood Group</label>
+                <select
+                  value={profile.blood_group}
+                  onChange={(e) => handleInputChange('blood_group', e.target.value)}
+                  disabled={!isEditing}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+                >
+                  <option value="">Select Blood Group</option>
+                  <option value="A+">A+</option>
+                  <option value="A-">A-</option>
+                  <option value="B+">B+</option>
+                  <option value="B-">B-</option>
+                  <option value="AB+">AB+</option>
+                  <option value="AB-">AB-</option>
+                  <option value="O+">O+</option>
+                  <option value="O-">O-</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">WhatsApp Number *</label>
+                <input
+                  type="tel"
+                  value={profile.whatsapp_no}
+                  onChange={(e) => handleInputChange('whatsapp_no', e.target.value)}
+                  placeholder="+91 9876543210"
+                  disabled={!isEditing}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* School Information */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">School Information</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">School Name *</label>
+              <input
+                type="text"
+                value={profile.school_name}
+                onChange={(e) => handleInputChange('school_name', e.target.value)}
+                disabled={!isEditing}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">School Address *</label>
+              <textarea
+                value={profile.school_address}
+                onChange={(e) => handleInputChange('school_address', e.target.value)}
+                disabled={!isEditing}
+                rows={3}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">School Email *</label>
+              <input
+                type="email"
+                value={profile.school_email}
+                onChange={(e) => handleInputChange('school_email', e.target.value)}
+                disabled={!isEditing}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Teacher Email</label>
+              <input
+                type="email"
+                value={profile.teacher_email}
+                onChange={(e) => handleInputChange('teacher_email', e.target.value)}
+                disabled={!isEditing}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Teacher Phone</label>
+                <input
+                  type="tel"
+                  value={profile.teacher_phone}
+                  onChange={(e) => handleInputChange('teacher_phone', e.target.value)}
+                  disabled={!isEditing}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Principal Phone</label>
+                <input
+                  type="tel"
+                  value={profile.principal_phone}
+                  onChange={(e) => handleInputChange('principal_phone', e.target.value)}
+                  disabled={!isEditing}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Principal Email</label>
+              <input
+                type="email"
+                value={profile.principal_email}
+                onChange={(e) => handleInputChange('principal_email', e.target.value)}
+                disabled={!isEditing}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Parent & Emergency Information */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Parent & Emergency Information</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Parent Email *</label>
+              <input
+                type="email"
+                value={profile.parent_email}
+                onChange={(e) => handleInputChange('parent_email', e.target.value)}
+                disabled={!isEditing}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Emergency Contact</label>
+              <input
+                type="tel"
+                value={profile.emergency_contact}
+                onChange={(e) => handleInputChange('emergency_contact', e.target.value)}
+                placeholder="Emergency contact number"
+                disabled={!isEditing}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Allergies / Medical Conditions</label>
+              <textarea
+                value={profile.allergies}
+                onChange={(e) => handleInputChange('allergies', e.target.value)}
+                placeholder="Any allergies or medical conditions to be aware of..."
+                disabled={!isEditing}
+                rows={3}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Additional Information */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Additional Information</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Hobbies & Interests</label>
+              <textarea
+                value={profile.hobbies}
+                onChange={(e) => handleInputChange('hobbies', e.target.value)}
+                placeholder="What do you enjoy doing in your free time?"
+                disabled={!isEditing}
+                rows={3}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Favorite Subjects</label>
+              <div className="grid grid-cols-2 gap-2">
+                {['Mathematics', 'Science', 'English', 'History', 'Geography', 'Art'].map((subject) => (
+                  <label key={subject} className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={profile.subjects_of_interest.includes(subject)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          handleInputChange('subjects_of_interest', [...profile.subjects_of_interest, subject]);
+                        } else {
+                          handleInputChange('subjects_of_interest', profile.subjects_of_interest.filter(s => s !== subject));
+                        }
+                      }}
+                      disabled={!isEditing}
+                      className="mr-2"
+                    />
+                    <span className="text-sm text-gray-700">{subject}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // My Children Component (for parents)
 const MyChildren = () => {
   const [children, setChildren] = useState([]);
