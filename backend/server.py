@@ -1160,20 +1160,129 @@ async def get_payment_status(
         if not payment_record:
             raise HTTPException(status_code=404, detail="Payment not found")
         
-        # Check with PhonePe (mock)
-        phonepe_status = phonepe_mock_client.get_payment_status(transaction_id)
+        # Get order details from Razorpay if needed
+        razorpay_status = "UNKNOWN"
+        if payment_record.get("phonepe_order_id"):
+            try:
+                order_details = razorpay_client.order.fetch(payment_record["phonepe_order_id"])
+                razorpay_status = order_details["status"]
+            except Exception as e:
+                logging.warning(f"Failed to fetch Razorpay order status: {e}")
         
         return {
             "transaction_id": transaction_id,
             "status": payment_record["status"],
             "amount": payment_record["amount"],
             "created_at": payment_record["created_at"],
-            "phonepe_status": phonepe_status
+            "razorpay_order_id": payment_record.get("phonepe_order_id"),
+            "razorpay_status": razorpay_status
         }
         
     except Exception as e:
         logging.error(f"Payment status check error: {e}")
         raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
+
+@api_router.post("/razorpay-webhook")
+async def handle_razorpay_webhook(request: Request):
+    """Handle Razorpay webhook notifications"""
+    try:
+        # Get webhook body and signature
+        body = await request.body()
+        signature = request.headers.get("x-razorpay-signature")
+        
+        if not signature:
+            raise HTTPException(status_code=400, detail="Missing signature")
+        
+        # Verify webhook signature
+        try:
+            razorpay_client.utility.verify_webhook_signature(
+                body.decode("utf-8"), signature, RAZORPAY_WEBHOOK_SECRET
+            )
+        except razorpay.errors.SignatureVerificationError:
+            raise HTTPException(status_code=400, detail="Invalid webhook signature")
+        
+        # Parse webhook data
+        webhook_data = json.loads(body.decode("utf-8"))
+        event = webhook_data["event"]
+        payload = webhook_data["payload"]
+        
+        # Handle different webhook events
+        if event == "payment.captured":
+            await handle_payment_success(payload["payment"]["entity"])
+        elif event == "payment.failed":
+            await handle_payment_failure(payload["payment"]["entity"])
+        elif event == "order.paid":
+            await handle_order_completion(payload["order"]["entity"])
+        
+        return {"status": "success", "message": "Webhook processed"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Webhook processing error: {e}")
+        raise HTTPException(status_code=500, detail="Webhook processing failed")
+
+async def handle_payment_success(payment_entity: dict):
+    """Handle successful payment webhook"""
+    try:
+        order_id = payment_entity["order_id"]
+        payment_id = payment_entity["id"]
+        amount = payment_entity["amount"]
+        
+        # Update payment record
+        await db.payments.update_one(
+            {"phonepe_order_id": order_id},
+            {
+                "$set": {
+                    "status": "SUCCESS",
+                    "updated_at": datetime.utcnow(),
+                    "razorpay_payment_id": payment_id,
+                    "payment_method": payment_entity.get("method"),
+                }
+            }
+        )
+        
+        # Handle subscription activation
+        payment_record = await db.payments.find_one({"phonepe_order_id": order_id})
+        if payment_record and payment_record["payment_type"] == "subscription":
+            await activate_subscription(payment_record["student_id"], payment_record["description"])
+        
+        logging.info(f"Payment success processed for order: {order_id}")
+        
+    except Exception as e:
+        logging.error(f"Error processing payment success: {e}")
+
+async def handle_payment_failure(payment_entity: dict):
+    """Handle failed payment webhook"""
+    try:
+        order_id = payment_entity["order_id"]
+        
+        # Update payment record
+        await db.payments.update_one(
+            {"phonepe_order_id": order_id},
+            {
+                "$set": {
+                    "status": "FAILED",
+                    "updated_at": datetime.utcnow(),
+                    "failure_reason": payment_entity.get("error_description")
+                }
+            }
+        )
+        
+        logging.info(f"Payment failure processed for order: {order_id}")
+        
+    except Exception as e:
+        logging.error(f"Error processing payment failure: {e}")
+
+async def handle_order_completion(order_entity: dict):
+    """Handle order completion webhook"""
+    try:
+        order_id = order_entity["id"]
+        
+        logging.info(f"Order completed: {order_id}")
+        
+    except Exception as e:
+        logging.error(f"Error processing order completion: {e}")
 
 @api_router.get("/my-subscription")
 async def get_my_subscription(current_user: User = Depends(get_current_user)):
