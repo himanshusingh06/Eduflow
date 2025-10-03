@@ -845,8 +845,12 @@ async def submit_quiz_attempt(
         time_taken=30  # TODO: Track actual time
     )
     
+    # Convert to dict and fix BSON compatibility (string keys)
+    attempt_dict = attempt.dict()
+    attempt_dict["answers"] = {str(k): v for k, v in answers.items()}
+    
     # Save attempt
-    await db.quiz_attempts.insert_one(attempt.dict())
+    await db.quiz_attempts.insert_one(attempt_dict)
     
     # Trigger AI analysis asynchronously
     try:
