@@ -2246,7 +2246,7 @@ const StudentProfile = () => {
 
   const fetchProfile = async () => {
     try {
-      const response = await axios.get('/api/student/profile');
+      const response = await axios.get('/student/profile');
       if (response.data.profile) {
         setProfile(response.data.profile);
       } else {
