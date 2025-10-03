@@ -814,7 +814,7 @@ async def get_quizzes(
 @api_router.post("/quiz/{quiz_id}/attempt", response_model=QuizAttempt)
 async def submit_quiz_attempt(
     quiz_id: str,
-    answers: Dict[int, int],
+    answers: Dict[str, int],
     current_user: User = Depends(get_current_user)
 ):
     # Get quiz
