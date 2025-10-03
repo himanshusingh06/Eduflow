@@ -1663,7 +1663,7 @@ const CreateQuiz = () => {
     setLoading(true);
     
     try {
-      await axios.post('/api/quiz/generate', formData);
+      await axios.post('/quiz/generate', formData);
       toast.success('Quiz generated successfully!');
       setFormData({
         title: '',
