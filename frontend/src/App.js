@@ -1790,6 +1790,412 @@ const StudentsManagement = () => {
   );
 };
 
+// File Upload Component (for teachers)
+const FileUpload = () => {
+  const [materials, setMaterials] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadForm, setUploadForm] = useState({
+    subject: 'Mathematics',
+    grade_level: 'Grade 8',
+    description: ''
+  });
+
+  useEffect(() => {
+    fetchMaterials();
+  }, []);
+
+  const fetchMaterials = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get('/api/teacher/my-materials');
+      setMaterials(response.data.materials || []);
+    } catch (error) {
+      toast.error('Failed to load materials');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      toast.error('Please upload only PDF files');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('subject', uploadForm.subject);
+      formData.append('grade_level', uploadForm.grade_level);
+      formData.append('description', uploadForm.description || `Study material: ${file.name}`);
+
+      const response = await axios.post('/api/teacher/upload-material', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      toast.success(`File uploaded and processed! ${response.data.pages_processed} pages extracted.`);
+      fetchMaterials();
+      setUploadForm({ subject: 'Mathematics', grade_level: 'Grade 8', description: '' });
+      event.target.value = ''; // Reset file input
+    } catch (error) {
+      toast.error('Failed to upload file');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Upload Study Materials</h1>
+        <p className="text-gray-600">Upload PDF course materials for AI-powered Q&A system</p>
+      </div>
+
+      {/* Upload Form */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload New Material</h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+            <select
+              value={uploadForm.subject}
+              onChange={(e) => setUploadForm({...uploadForm, subject: e.target.value})}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Mathematics">Mathematics</option>
+              <option value="Science">Science</option>
+              <option value="English">English</option>
+              <option value="History">History</option>
+              <option value="Geography">Geography</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
+            <select
+              value={uploadForm.grade_level}
+              onChange={(e) => setUploadForm({...uploadForm, grade_level: e.target.value})}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Grade 6">Grade 6</option>
+              <option value="Grade 7">Grade 7</option>
+              <option value="Grade 8">Grade 8</option>
+              <option value="Grade 9">Grade 9</option>
+              <option value="Grade 10">Grade 10</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Description (Optional)</label>
+          <input
+            type="text"
+            value={uploadForm.description}
+            onChange={(e) => setUploadForm({...uploadForm, description: e.target.value})}
+            placeholder="Brief description of the material..."
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Upload PDF File</label>
+          <input
+            type="file"
+            accept=".pdf"
+            onChange={handleFileUpload}
+            disabled={uploading}
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+          />
+        </div>
+
+        {uploading && (
+          <div className="text-center text-emerald-600">
+            <p>Processing file and creating embeddings...</p>
+          </div>
+        )}
+      </div>
+
+      {/* Uploaded Materials */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">My Uploaded Materials</h3>
+        
+        {loading ? (
+          <p className="text-gray-500">Loading materials...</p>
+        ) : materials.length > 0 ? (
+          <div className="grid gap-4">
+            {materials.map((material) => (
+              <div key={material.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium text-gray-900">{material.original_filename}</h4>
+                    <p className="text-gray-600 text-sm">{material.subject} • {material.grade_level}</p>
+                    <p className="text-gray-500 text-sm">{material.description}</p>
+                  </div>
+                  <div className="text-right">
+                    <div className={`px-2 py-1 rounded-full text-xs ${
+                      material.is_processed 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {material.is_processed ? '✅ Processed' : '⏳ Processing'}
+                    </div>
+                    <p className="text-gray-500 text-xs mt-1">
+                      {(material.file_size / 1024).toFixed(1)} KB
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-gray-500">No materials uploaded yet</p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Notes Component (for students)
+const NotesManager = () => {
+  const [notes, setNotes] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newNote, setNewNote] = useState({
+    title: '',
+    content: '',
+    subject: 'Mathematics',
+    tags: []
+  });
+  const [summarizing, setSummarizing] = useState(false);
+  const [summaryResult, setSummaryResult] = useState(null);
+
+  useEffect(() => {
+    fetchNotes();
+  }, []);
+
+  const fetchNotes = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get('/api/notes/my-notes');
+      setNotes(response.data.notes || []);
+    } catch (error) {
+      toast.error('Failed to load notes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createNote = async () => {
+    if (!newNote.title.trim() || !newNote.content.trim()) {
+      toast.error('Please provide both title and content');
+      return;
+    }
+
+    try {
+      await axios.post('/api/notes/create', newNote);
+      toast.success('Note created successfully!');
+      setNewNote({ title: '', content: '', subject: 'Mathematics', tags: [] });
+      setShowCreateForm(false);
+      fetchNotes();
+    } catch (error) {
+      toast.error('Failed to create note');
+    }
+  };
+
+  const summarizeNote = async (noteContent, summaryType = 'brief') => {
+    setSummarizing(true);
+    try {
+      const response = await axios.post('/api/notes/summarize', {
+        note_content: noteContent,
+        summary_type: summaryType
+      });
+      
+      setSummaryResult({
+        ...response.data,
+        original_content: noteContent
+      });
+      
+      toast.success('Note summarized successfully!');
+    } catch (error) {
+      toast.error('Failed to summarize note');
+    } finally {
+      setSummarizing(false);
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Notes</h1>
+          <p className="text-gray-600">Create, manage, and summarize your study notes</p>
+        </div>
+        <button
+          onClick={() => setShowCreateForm(!showCreateForm)}
+          className="bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600 transition-colors"
+        >
+          {showCreateForm ? 'Cancel' : 'Create Note'}
+        </button>
+      </div>
+
+      {/* Create Note Form */}
+      {showCreateForm && (
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Create New Note</h3>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
+              <input
+                type="text"
+                value={newNote.title}
+                onChange={(e) => setNewNote({...newNote, title: e.target.value})}
+                placeholder="Note title..."
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+              <select
+                value={newNote.subject}
+                onChange={(e) => setNewNote({...newNote, subject: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="Mathematics">Mathematics</option>
+                <option value="Science">Science</option>
+                <option value="English">English</option>
+                <option value="History">History</option>
+                <option value="Geography">Geography</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Content</label>
+              <textarea
+                value={newNote.content}
+                onChange={(e) => setNewNote({...newNote, content: e.target.value})}
+                placeholder="Write your notes here..."
+                className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 min-h-[200px]"
+              />
+            </div>
+
+            <div className="flex space-x-2">
+              <button
+                onClick={createNote}
+                className="bg-emerald-500 text-white px-6 py-2 rounded-lg hover:bg-emerald-600 transition-colors"
+              >
+                Save Note
+              </button>
+              <button
+                onClick={() => setShowCreateForm(false)}
+                className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Summary Result */}
+      {summaryResult && (
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">AI Summary</h3>
+            <button
+              onClick={() => setSummaryResult(null)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              ✕
+            </button>
+          </div>
+          
+          <div className="bg-blue-50 p-4 rounded-lg mb-4">
+            <h4 className="font-medium text-blue-900 mb-2">Summary ({summaryResult.summary_type})</h4>
+            <p className="text-blue-800 whitespace-pre-wrap">{summaryResult.summary}</p>
+          </div>
+          
+          <div className="text-sm text-gray-600">
+            Original: {summaryResult.original_length} characters → Summary: {summaryResult.summary.length} characters
+            ({((summaryResult.summary.length / summaryResult.original_length) * 100).toFixed(1)}% of original)
+          </div>
+        </div>
+      )}
+
+      {/* Notes List */}
+      <div className="space-y-4">
+        {loading ? (
+          <p className="text-gray-500">Loading notes...</p>
+        ) : notes.length > 0 ? (
+          notes.map((note) => (
+            <div key={note.id} className="bg-white rounded-xl p-6 shadow-sm border">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">{note.title}</h3>
+                  <p className="text-gray-600 text-sm">{note.subject} • {new Date(note.created_at).toLocaleDateString()}</p>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => summarizeNote(note.content, 'brief')}
+                    disabled={summarizing}
+                    className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 disabled:opacity-50"
+                  >
+                    Brief Summary
+                  </button>
+                  <button
+                    onClick={() => summarizeNote(note.content, 'detailed')}
+                    disabled={summarizing}
+                    className="px-3 py-1 bg-purple-500 text-white text-sm rounded hover:bg-purple-600 disabled:opacity-50"
+                  >
+                    Detailed Summary
+                  </button>
+                </div>
+              </div>
+              
+              <div className="text-gray-700 whitespace-pre-wrap mb-3">
+                {note.content.length > 300 
+                  ? `${note.content.substring(0, 300)}...` 
+                  : note.content
+                }
+              </div>
+              
+              {note.tags && note.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {note.tags.map((tag, idx) => (
+                    <span key={idx} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-gray-500 text-lg">No notes yet</p>
+            <p className="text-gray-400">Create your first note to get started</p>
+          </div>
+        )}
+      </div>
+
+      {summarizing && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg">
+            <p className="text-gray-900">Summarizing note with AI...</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // My Children Component (for parents)
 const MyChildren = () => {
   const [children, setChildren] = useState([]);
@@ -1801,7 +2207,7 @@ const MyChildren = () => {
 
   const fetchChildren = async () => {
     try {
-      const response = await axios.get('/parent/students');
+      const response = await axios.get('/api/parent/students');
       setChildren(response.data.students);
     } catch (error) {
       toast.error('Failed to load children data');
