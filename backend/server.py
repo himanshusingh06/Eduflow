@@ -961,24 +961,29 @@ async def get_subscription_plans():
     ]
     return {"plans": plans}
 
-@api_router.post("/create-payment")
-async def create_payment(
+@api_router.post("/create-order")
+async def create_razorpay_order(
     payment_request: PaymentRequest,
     current_user: User = Depends(get_current_user)
 ):
-    """Create a one-time payment"""
+    """Create a Razorpay order for payment"""
     try:
         # Generate transaction ID
         transaction_id = f"PAY_{current_user.id}_{uuid.uuid4().hex[:8]}"
         
-        # Mock PhonePe payment creation
-        phonepe_data = {
-            "merchant_transaction_id": transaction_id,
-            "amount": payment_request.amount,
-            "merchant_user_id": current_user.id
+        # Create Razorpay order
+        order_data = {
+            "amount": payment_request.amount,  # Amount in paise
+            "currency": "INR",
+            "receipt": transaction_id,
+            "notes": {
+                "student_id": current_user.id,
+                "description": payment_request.description,
+                "payment_type": payment_request.payment_type
+            }
         }
         
-        response = phonepe_mock_client.create_payment(phonepe_data)
+        razorpay_order = razorpay_client.order.create(order_data)
         
         # Store payment record
         payment_record = PaymentRecord(
@@ -986,30 +991,78 @@ async def create_payment(
             student_id=current_user.id,
             amount=payment_request.amount,
             payment_type=payment_request.payment_type,
-            status="INITIATED",
+            status="CREATED",
             description=payment_request.description,
-            phonepe_order_id=response["data"]["order_id"]
+            phonepe_order_id=razorpay_order["id"]
         )
         
         await db.payments.insert_one(payment_record.dict())
         
         return {
             "success": True,
+            "order_id": razorpay_order["id"],
+            "amount": razorpay_order["amount"],
+            "currency": razorpay_order["currency"],
+            "key_id": RAZORPAY_KEY_ID,
             "transaction_id": transaction_id,
-            "payment_url": response["data"]["redirect_url"],
-            "message": "Payment initiated successfully"
+            "message": "Order created successfully"
         }
         
     except Exception as e:
-        logging.error(f"Payment creation error: {e}")
-        raise HTTPException(status_code=500, detail=f"Payment creation failed: {str(e)}")
+        logging.error(f"Order creation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Order creation failed: {str(e)}")
+
+@api_router.post("/verify-payment")
+async def verify_razorpay_payment(
+    order_id: str,
+    payment_id: str, 
+    signature: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Verify Razorpay payment and update status"""
+    try:
+        # Verify signature
+        if not verify_razorpay_signature(order_id, payment_id, signature):
+            raise HTTPException(status_code=400, detail="Invalid payment signature")
+        
+        # Get payment details from Razorpay
+        payment_details = razorpay_client.payment.fetch(payment_id)
+        
+        # Update payment record
+        await db.payments.update_one(
+            {"phonepe_order_id": order_id},
+            {
+                "$set": {
+                    "status": "SUCCESS",
+                    "updated_at": datetime.utcnow(),
+                    "razorpay_payment_id": payment_id,
+                    "payment_method": payment_details.get("method"),
+                }
+            }
+        )
+        
+        # If it's a subscription payment, activate subscription
+        payment_record = await db.payments.find_one({"phonepe_order_id": order_id})
+        if payment_record and payment_record["payment_type"] == "subscription":
+            await activate_subscription(payment_record["student_id"], payment_record["description"])
+        
+        return {
+            "success": True,
+            "message": "Payment verified successfully",
+            "payment_id": payment_id,
+            "status": "SUCCESS"
+        }
+        
+    except Exception as e:
+        logging.error(f"Payment verification error: {e}")
+        raise HTTPException(status_code=500, detail=f"Payment verification failed: {str(e)}")
 
 @api_router.post("/create-subscription")
 async def create_subscription(
     subscription_request: SubscriptionRequest,
     current_user: User = Depends(get_current_user)
 ):
-    """Create a subscription"""
+    """Create a subscription order"""
     try:
         # Get subscription plan
         plans = await get_subscription_plans()
@@ -1020,14 +1073,20 @@ async def create_subscription(
         # Generate subscription ID
         subscription_id = f"SUB_{current_user.id}_{uuid.uuid4().hex[:8]}"
         
-        # Mock PhonePe subscription creation
-        phonepe_data = {
-            "merchant_subscription_id": subscription_id,
+        # Create Razorpay order for first month payment
+        order_data = {
             "amount": plan["monthly_amount"],
-            "merchant_user_id": current_user.id
+            "currency": "INR", 
+            "receipt": subscription_id,
+            "notes": {
+                "student_id": current_user.id,
+                "plan_id": subscription_request.plan_id,
+                "subscription_type": "monthly_premium",
+                "plan_name": plan["name"]
+            }
         }
         
-        response = phonepe_mock_client.create_subscription(phonepe_data)
+        razorpay_order = razorpay_client.order.create(order_data)
         
         # Store subscription record
         start_date = datetime.utcnow()
@@ -1045,16 +1104,49 @@ async def create_subscription(
         
         await db.subscriptions.insert_one(subscription.dict())
         
+        # Create payment record for subscription
+        payment_record = PaymentRecord(
+            transaction_id=subscription_id,
+            student_id=current_user.id,
+            amount=plan["monthly_amount"],
+            payment_type="subscription",
+            status="CREATED",
+            description=f"Subscription to {plan['name']}",
+            phonepe_order_id=razorpay_order["id"]
+        )
+        
+        await db.payments.insert_one(payment_record.dict())
+        
         return {
             "success": True,
+            "order_id": razorpay_order["id"],
+            "amount": razorpay_order["amount"],
+            "currency": razorpay_order["currency"],
+            "key_id": RAZORPAY_KEY_ID,
             "subscription_id": subscription_id,
-            "mandate_url": response["data"]["redirect_url"],
-            "message": "Subscription mandate created successfully"
+            "message": "Subscription order created successfully"
         }
         
     except Exception as e:
         logging.error(f"Subscription creation error: {e}")
         raise HTTPException(status_code=500, detail=f"Subscription creation failed: {str(e)}")
+
+async def activate_subscription(student_id: str, plan_description: str):
+    """Activate subscription after successful payment"""
+    try:
+        await db.subscriptions.update_one(
+            {"student_id": student_id, "status": "PENDING"},
+            {
+                "$set": {
+                    "status": "ACTIVE",
+                    "last_payment_date": datetime.utcnow(),
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        logging.info(f"Subscription activated for student: {student_id}")
+    except Exception as e:
+        logging.error(f"Failed to activate subscription: {e}")
 
 @api_router.get("/payment-status/{transaction_id}")
 async def get_payment_status(
