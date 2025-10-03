@@ -1072,7 +1072,7 @@ const AskAI = () => {
 
   const fetchAvailableMaterials = async () => {
     try {
-      const response = await axios.get('/api/materials/available');
+      const response = await axios.get('/materials/available');
       setAvailableMaterials(response.data.materials || []);
     } catch (error) {
       console.error('Failed to load materials:', error);
