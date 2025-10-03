@@ -2001,10 +2001,10 @@ async def get_quiz_analysis(
 @api_router.get("/student/profile")
 async def get_student_profile(current_user: User = Depends(get_current_user)):
     """Get student profile"""
+    if current_user.role != "student":
+        raise HTTPException(status_code=403, detail="Student access required")
+    
     try:
-        if current_user.role != "student":
-            raise HTTPException(status_code=403, detail="Student access required")
-        
         profile = await db.student_profiles.find_one({"student_id": current_user.id})
         
         if profile and "_id" in profile:
