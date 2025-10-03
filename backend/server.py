@@ -355,20 +355,23 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 # ============= AI FUNCTIONS =============
 
 async def generate_study_content(topic: str, subject: str, grade_level: str) -> str:
-    """Generate personalized study content using AI"""
+    """Generate personalized study content using Gemini AI"""
     try:
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"study_content_{uuid.uuid4()}",
-            system_message=f"You are an expert educator creating study content for {grade_level} students in {subject}."
-        ).with_model("gemini", "gemini-2.5-pro")
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
-        user_message = UserMessage(
-            text=f"Create comprehensive study content about '{topic}' for {grade_level} students studying {subject}. Include key concepts, examples, and learning objectives. Make it engaging and age-appropriate."
-        )
-        
-        response = await chat.send_message(user_message)
-        return response
+        prompt = f"""You are an expert educator creating study content for {grade_level} students in {subject}.
+
+Create comprehensive study content about '{topic}' that includes:
+1. Clear introduction and learning objectives
+2. Key concepts explained in simple terms
+3. Real-world examples and applications
+4. Important formulas or facts (if applicable)
+5. Practice questions or activities
+
+Make it engaging, age-appropriate, and well-structured for {grade_level} level understanding."""
+
+        response = model.generate_content(prompt)
+        return response.text
     except Exception as e:
         logging.error(f"AI content generation error: {e}")
         return f"Study content for {topic}: This is a comprehensive overview of {topic} in {subject}. [AI generation failed, please try again]"
