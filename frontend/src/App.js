@@ -1560,7 +1560,7 @@ const CreateContent = () => {
     setLoading(true);
     
     try {
-      await axios.post('/api/study/generate', formData);
+      await axios.post('/study/generate', formData);
       toast.success('Content generated successfully!');
       setFormData({
         title: '',
