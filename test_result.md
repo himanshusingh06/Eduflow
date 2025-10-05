@@ -357,15 +357,18 @@ test_plan:
 
   - task: "Enhanced Pinecone RAG System"
     implemented: true
-    working: true
+    working: false
     file: "server.py"
-    stuck_count: 0
+    stuck_count: 1
     priority: "high"
     needs_retesting: false
     status_history:
       - working: true
         agent: "testing"
         comment: "✅ ENHANCED RAG SYSTEM WORKING: /api/rag/ask endpoint operational and generating contextual responses. Pinecone integration configured and responding to queries. Teacher PDF upload endpoint exists but requires multipart file upload for full testing."
+      - working: false
+        agent: "testing"
+        comment: "❌ Pinecone Integration Issue: Fixed pinecone-client package conflict, but Pinecone initialization failing with 'create_index() missing 1 required positional argument: spec' error. API has changed and now requires ServerlessSpec or PodSpec parameter. RAG endpoints working with fallback to general AI knowledge."
 
   - task: "Student PDF Management System"
     implemented: true
