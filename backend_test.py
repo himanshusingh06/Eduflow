@@ -1675,48 +1675,50 @@ class EduAgentTester:
             self.log_result("Invalid Registration Format", False, f"Registration validation issue: {response}")
 
     async def run_all_tests(self):
-        """Run focused authentication testing"""
-        print("🚀 Starting EduAgent Authentication Testing")
-        print("🔬 PRIORITY FOCUS: Authentication Endpoints (Login/Signup Fix)")
-        print("=" * 70)
+        """Run all test suites with focus on Enhanced RAG System and WhatsApp Integration"""
+        print("🚀 Starting EduAgent Backend API Testing Suite...")
+        print(f"📍 Testing against: {BASE_URL}")
         
-        try:
-            # Setup existing users first
-            await self.register_and_login_users()
-            
-            # PRIORITY: Comprehensive Authentication Testing
-            await self.test_authentication_endpoints_comprehensive()
-            
-        except Exception as e:
-            self.log_result("Test Suite", False, f"Test suite failed with error: {str(e)}")
+        # Setup
+        await self.register_and_login_users()
         
-        # Print summary
-        print("\n" + "=" * 70)
-        print("📊 AUTHENTICATION TEST SUMMARY")
-        print("=" * 70)
+        # PRIORITY TESTS - Enhanced RAG System, WhatsApp Integration, and Fixed Ask Questions
+        print("\n" + "="*80)
+        print("🎯 PRIORITY TESTING: Enhanced RAG System & WhatsApp Integration")
+        print("="*80)
         
-        total_tests = len(self.test_results)
-        passed_tests = sum(1 for result in self.test_results if result["success"])
-        failed_tests = total_tests - passed_tests
+        await self.test_enhanced_rag_system()
+        await self.test_student_pdf_management()
+        await self.test_whatsapp_integration()
+        await self.test_combined_rag_system()
+        await self.test_authentication_and_access_controls_enhanced()
+        await self.test_error_scenarios_enhanced()
         
-        print(f"Total Tests: {total_tests}")
-        print(f"✅ Passed: {passed_tests}")
-        print(f"❌ Failed: {failed_tests}")
-        print(f"Success Rate: {(passed_tests/total_tests)*100:.1f}%")
+        # Core functionality tests
+        await self.test_api_endpoint_fixes()
+        await self.test_student_profile_system()
+        await self.test_teacher_file_upload()
+        await self.test_quiz_system_fixes()
+        await self.test_notes_management_complete()
+        await self.test_authentication_role_based_access()
+        await self.test_error_scenarios()
         
-        # Categorize authentication results
-        auth_tests = [r for r in self.test_results if "auth" in r["test"].lower() or "login" in r["test"].lower() or "register" in r["test"].lower() or "token" in r["test"].lower() or "role" in r["test"].lower()]
+        # Enhanced features tests
+        await self.test_authentication_endpoints_comprehensive()
+        await self.test_gemini_ai_integration()
+        await self.test_agentic_quiz_analysis()
+        await self.test_rag_system()
+        await self.test_enhanced_learning_features()
         
-        print(f"\n🎯 Authentication Breakdown:")
-        print(f"  Authentication Tests: {sum(1 for t in auth_tests if t['success'])}/{len(auth_tests)} passed")
+        # Payment and reporting tests
+        await self.test_payment_system()
+        await self.test_personalized_learning()
+        await self.test_parent_progress_reporting()
         
-        if failed_tests > 0:
-            print("\n🔍 FAILED TESTS:")
-            for result in self.test_results:
-                if not result["success"]:
-                    print(f"  • {result['test']}: {result['message']}")
+        # Generate summary
+        await self.generate_test_summary()
         
-        return passed_tests, failed_tests
+        return len([r for r in self.test_results if r["success"]]), len([r for r in self.test_results if not r["success"]])
 
 async def main():
     """Main test runner"""
