@@ -1057,6 +1057,396 @@ const QuizSystem = () => {
   );
 };
 
+// Dynamic Quiz Component
+const DynamicQuiz = () => {
+  const [step, setStep] = useState('create'); // 'create', 'taking', 'result'
+  const [quizRequest, setQuizRequest] = useState({
+    subject: 'Mathematics',
+    topic: '',
+    difficulty: 'medium',
+    num_questions: 5,
+    grade_level: 'Grade 8'
+  });
+  const [generatedQuiz, setGeneratedQuiz] = useState(null);
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [studentAnswers, setStudentAnswers] = useState({});
+  const [evaluation, setEvaluation] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [myAttempts, setMyAttempts] = useState([]);
+
+  useEffect(() => {
+    fetchMyAttempts();
+  }, []);
+
+  const fetchMyAttempts = async () => {
+    try {
+      const response = await axios.get('/quiz/my-dynamic-attempts');
+      setMyAttempts(response.data.evaluations || []);
+    } catch (error) {
+      console.error('Failed to load attempts:', error);
+    }
+  };
+
+  const generateQuiz = async () => {
+    if (!quizRequest.topic.trim()) {
+      toast.error('Please enter a topic for the quiz');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await axios.post('/quiz/generate-dynamic', quizRequest);
+      setGeneratedQuiz(response.data.quiz);
+      setStep('taking');
+      setCurrentQuestion(0);
+      setStudentAnswers({});
+      toast.success('Quiz generated successfully!');
+    } catch (error) {
+      console.error('Quiz generation error:', error);
+      toast.error('Failed to generate quiz');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectAnswer = (questionNumber, answer) => {
+    setStudentAnswers({
+      ...studentAnswers,
+      [questionNumber]: answer
+    });
+  };
+
+  const submitQuiz = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.post(`/quiz/submit-dynamic/${generatedQuiz.id}`, studentAnswers);
+      setEvaluation(response.data.evaluation);
+      setStep('result');
+      
+      if (response.data.email_sent) {
+        toast.success('Quiz submitted! Check your email for detailed report.');
+      } else {
+        toast.success('Quiz submitted successfully!');
+      }
+      
+      fetchMyAttempts(); // Refresh attempts list
+    } catch (error) {
+      console.error('Quiz submission error:', error);
+      toast.error('Failed to submit quiz');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startNewQuiz = () => {
+    setStep('create');
+    setQuizRequest({
+      subject: 'Mathematics',
+      topic: '',
+      difficulty: 'medium',
+      num_questions: 5,
+      grade_level: 'Grade 8'
+    });
+    setGeneratedQuiz(null);
+    setCurrentQuestion(0);
+    setStudentAnswers({});
+    setEvaluation(null);
+  };
+
+  // Quiz Creation Step
+  if (step === 'create') {
+    return (
+      <div className="p-6 space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Custom Quiz</h1>
+          <p className="text-gray-600">Generate personalized quizzes with AI based on any topic you want to study</p>
+        </div>
+
+        {/* Quiz Configuration */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Quiz Configuration</h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+              <select
+                value={quizRequest.subject}
+                onChange={(e) => setQuizRequest({...quizRequest, subject: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="Mathematics">Mathematics</option>
+                <option value="Science">Science</option>
+                <option value="English">English</option>
+                <option value="History">History</option>
+                <option value="Geography">Geography</option>
+                <option value="Physics">Physics</option>
+                <option value="Chemistry">Chemistry</option>
+                <option value="Biology">Biology</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
+              <select
+                value={quizRequest.grade_level}
+                onChange={(e) => setQuizRequest({...quizRequest, grade_level: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="Grade 6">Grade 6</option>
+                <option value="Grade 7">Grade 7</option>
+                <option value="Grade 8">Grade 8</option>
+                <option value="Grade 9">Grade 9</option>
+                <option value="Grade 10">Grade 10</option>
+                <option value="Grade 11">Grade 11</option>
+                <option value="Grade 12">Grade 12</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Difficulty Level</label>
+              <select
+                value={quizRequest.difficulty}
+                onChange={(e) => setQuizRequest({...quizRequest, difficulty: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Number of Questions</label>
+              <select
+                value={quizRequest.num_questions}
+                onChange={(e) => setQuizRequest({...quizRequest, num_questions: parseInt(e.target.value)})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value={5}>5 Questions</option>
+                <option value={6}>6 Questions</option>
+                <option value={7}>7 Questions</option>
+                <option value={8}>8 Questions</option>
+                <option value={9}>9 Questions</option>
+                <option value={10}>10 Questions</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Topic *</label>
+            <input
+              type="text"
+              value={quizRequest.topic}
+              onChange={(e) => setQuizRequest({...quizRequest, topic: e.target.value})}
+              placeholder="Enter the specific topic (e.g., 'Quadratic Equations', 'Cell Biology', 'World War II')"
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            />
+            <p className="text-sm text-gray-500 mt-1">Be specific! Example: Instead of 'Math', use 'Algebra - Linear Equations'</p>
+          </div>
+
+          <button
+            onClick={generateQuiz}
+            disabled={loading || !quizRequest.topic.trim()}
+            className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? 'Generating Quiz with AI...' : 'Generate Quiz'}
+          </button>
+        </div>
+
+        {/* Previous Attempts */}
+        {myAttempts.length > 0 && (
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Quiz Attempts</h3>
+            <div className="space-y-3">
+              {myAttempts.slice(0, 5).map((attempt, idx) => (
+                <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium">{attempt.quiz_data?.quiz_title || 'Custom Quiz'}</p>
+                    <p className="text-sm text-gray-600">
+                      {attempt.quiz_data?.subject} • {attempt.quiz_data?.difficulty}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className={`font-bold ${attempt.percentage >= 70 ? 'text-green-600' : 'text-red-600'}`}>
+                      {attempt.percentage?.toFixed(1)}%
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {new Date(attempt.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Quiz Taking Step
+  if (step === 'taking' && generatedQuiz) {
+    const question = generatedQuiz.questions[currentQuestion];
+    const progress = ((currentQuestion + 1) / generatedQuiz.questions.length) * 100;
+
+    return (
+      <div className="p-6 space-y-6">
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">{generatedQuiz.quiz_title}</h2>
+              <p className="text-gray-600">{generatedQuiz.subject} • {generatedQuiz.difficulty} • {generatedQuiz.grade_level}</p>
+            </div>
+            <button
+              onClick={startNewQuiz}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              ← Back to Create
+            </button>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="mb-6">
+            <div className="flex justify-between text-sm text-gray-600 mb-2">
+              <span>Question {currentQuestion + 1} of {generatedQuiz.questions.length}</span>
+              <span>{progress.toFixed(0)}% Complete</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-emerald-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              ></div>
+            </div>
+          </div>
+
+          {/* Question */}
+          <div className="mb-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">
+              {question.question_number}. {question.question}
+            </h3>
+            <div className="space-y-3">
+              {Object.entries(question.options).map(([optionKey, optionText]) => (
+                <label key={optionKey} className="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name={`question-${currentQuestion}`}
+                    value={optionKey}
+                    checked={studentAnswers[question.question_number] === optionKey}
+                    onChange={() => selectAnswer(question.question_number, optionKey)}
+                    className="mr-3"
+                  />
+                  <span className="font-medium mr-2">{optionKey}.</span>
+                  <span className="text-gray-800">{optionText}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Navigation */}
+          <div className="flex justify-between">
+            <button
+              onClick={() => setCurrentQuestion(currentQuestion - 1)}
+              disabled={currentQuestion === 0}
+              className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            
+            {currentQuestion === generatedQuiz.questions.length - 1 ? (
+              <button
+                onClick={submitQuiz}
+                disabled={loading}
+                className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50"
+              >
+                {loading ? 'Evaluating...' : 'Submit Quiz'}
+              </button>
+            ) : (
+              <button
+                onClick={() => setCurrentQuestion(currentQuestion + 1)}
+                className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+              >
+                Next
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Results Step
+  if (step === 'result' && evaluation) {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Quiz Results</h2>
+            <div className={`text-4xl font-bold mb-2 ${evaluation.percentage >= 70 ? 'text-green-600' : evaluation.percentage >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+              {evaluation.percentage?.toFixed(1)}%
+            </div>
+            <p className="text-gray-600">{evaluation.score} out of {evaluation.total_questions} correct</p>
+            <p className="text-lg font-medium mt-2">
+              {evaluation.percentage >= 90 ? '🎉 Excellent Work!' : 
+               evaluation.percentage >= 70 ? '👍 Good Job!' : 
+               evaluation.percentage >= 50 ? '📚 Keep Practicing!' : 
+               '💪 Don\'t Give Up!'}
+            </p>
+          </div>
+
+          {/* AI Evaluation */}
+          <div className="space-y-4">
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h4 className="font-medium text-blue-900 mb-2">📊 AI Evaluation Report</h4>
+              <p className="text-blue-800">{evaluation.evaluation_report}</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-green-50 p-4 rounded-lg">
+                <h4 className="font-medium text-green-900 mb-2">💪 Your Strengths</h4>
+                <ul className="text-green-800 space-y-1">
+                  {evaluation.strengths?.map((strength, idx) => (
+                    <li key={idx}>• {strength}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="bg-orange-50 p-4 rounded-lg">
+                <h4 className="font-medium text-orange-900 mb-2">📈 Areas to Improve</h4>
+                <ul className="text-orange-800 space-y-1">
+                  {evaluation.weaknesses?.map((weakness, idx) => (
+                    <li key={idx}>• {weakness}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="bg-purple-50 p-4 rounded-lg">
+              <h4 className="font-medium text-purple-900 mb-2">💡 Recommendations</h4>
+              <ul className="text-purple-800 space-y-1">
+                {evaluation.recommendations?.map((rec, idx) => (
+                  <li key={idx}>• {rec}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div className="flex space-x-4 mt-6">
+            <button
+              onClick={startNewQuiz}
+              className="flex-1 bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 transition-colors"
+            >
+              Create New Quiz
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return <div className="p-6">Loading...</div>;
+};
+
 // Ask AI Component
 const AskAI = () => {
   const [question, setQuestion] = useState('');
