@@ -23,6 +23,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 from pinecone import Pinecone
+from twilio.rest import Client as TwilioClient
 import json
 
 ROOT_DIR = Path(__file__).parent
