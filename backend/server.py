@@ -1688,7 +1688,7 @@ async def create_rag_embeddings(material_id: str, pages_text: List[str], upload_
         logging.error(f"RAG embedding error: {e}")
         return False
 
-async def query_rag_system(question: str, subject: str = None, grade_level: str = None, material_filter: str = None) -> str:
+async def query_rag_system(question: str, subject: str = None, grade_level: str = None, material_filter: str = None, include_teacher_materials: bool = True) -> str:
     """Query RAG system using Pinecone for course-related answers"""
     try:
         if not pinecone_index:
@@ -1697,47 +1697,73 @@ async def query_rag_system(question: str, subject: str = None, grade_level: str 
         # Generate query embedding
         query_embedding = sentence_model.encode(question).tolist()
         
-        # Build filter for specific materials if provided
+        # Build filter for materials
         filter_dict = {}
         if material_filter:
+            # Specific material requested
             filter_dict["material_id"] = material_filter
+        elif include_teacher_materials:
+            # Include both teacher and student materials
+            filter_dict = {"upload_type": {"$in": ["teacher", "student"]}}
         
         # Search in Pinecone
         results = pinecone_index.query(
             vector=query_embedding,
-            top_k=5,
+            top_k=8,  # Get more results for better context
             include_metadata=True,
             filter=filter_dict if filter_dict else None
         )
         
         if not results.matches:
-            return "I couldn't find relevant information in the uploaded materials. Please try a different question or upload more course materials."
+            return "I couldn't find relevant information in the uploaded materials. Please ask your teacher to upload course materials or upload your own study documents."
         
-        # Extract relevant text from results
+        # Extract relevant text from results with lower threshold for broader search
         contexts = []
+        sources = []
         for match in results.matches:
-            if match.score > 0.7:  # Only use high-confidence matches
-                contexts.append(match.metadata.get('full_text', match.metadata.get('text', '')))
+            if match.score > 0.6:  # Lowered threshold for more inclusive results
+                full_text = match.metadata.get('full_text', match.metadata.get('text', ''))
+                if full_text:
+                    contexts.append(full_text)
+                    source_type = match.metadata.get('upload_type', 'unknown')
+                    sources.append(f"{source_type} material")
         
         if not contexts:
-            return "I couldn't find sufficiently relevant information to answer your question. Please try rephrasing or ask about different content."
+            # If no high-confidence matches, try with general AI knowledge
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            prompt = f"""As an AI tutor, answer this student's question about {subject or 'academics'}:
+
+Question: {question}
+
+Provide a clear, educational answer appropriate for {grade_level or 'general'} level. Since no specific course materials were found, provide general knowledge and suggest the student ask their teacher for more specific information."""
+
+            response = model.generate_content(prompt)
+            return f"📚 **General AI Answer** (No specific course materials found):\n\n{response.text}\n\n💡 *Tip: Ask your teacher to upload course materials for more specific answers!*"
         
         # Use Gemini to generate answer based on retrieved context
         model = genai.GenerativeModel('gemini-2.5-flash')
         
-        context = "\n\n".join(contexts[:3])  # Use top 3 results
+        context = "\n\n".join(contexts[:4])  # Use top 4 results for richer context
+        sources_text = ", ".join(set(sources[:3]))
         
-        prompt = f"""Based on the following course materials, answer the student's question:
+        prompt = f"""Based on the following course materials, answer the student's question comprehensively:
 
 Course Materials Context:
 {context}
 
 Student Question: {question}
 
-Please provide a clear, educational answer based on the course materials. If the materials don't contain enough information, mention that and provide what you can. Make the answer appropriate for {grade_level or 'general'} level in {subject or 'the subject'}."""
+Instructions:
+1. Provide a clear, educational answer based primarily on the course materials
+2. If the materials don't fully cover the question, supplement with relevant knowledge
+3. Make the answer appropriate for {grade_level or 'general'} level in {subject or 'the subject'}
+4. Be thorough but easy to understand
+5. Include examples when helpful
+
+Answer:"""
 
         response = model.generate_content(prompt)
-        return response.text
+        return f"📖 **Answer from Course Materials** (Sources: {sources_text}):\n\n{response.text}"
         
     except Exception as e:
         logging.error(f"RAG query error: {e}")
