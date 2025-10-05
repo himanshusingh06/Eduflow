@@ -1720,6 +1720,52 @@ class EduAgentTester:
         
         return len([r for r in self.test_results if r["success"]]), len([r for r in self.test_results if not r["success"]])
 
+    async def generate_test_summary(self):
+        """Generate comprehensive test summary"""
+        print("\n" + "="*80)
+        print("📊 COMPREHENSIVE TEST SUMMARY")
+        print("="*80)
+        
+        total_tests = len(self.test_results)
+        passed_tests = sum(1 for result in self.test_results if result["success"])
+        failed_tests = total_tests - passed_tests
+        
+        print(f"Total Tests: {total_tests}")
+        print(f"✅ Passed: {passed_tests}")
+        print(f"❌ Failed: {failed_tests}")
+        print(f"Success Rate: {(passed_tests/total_tests)*100:.1f}%")
+        
+        # Categorize results by feature
+        categories = {
+            "Enhanced RAG System": ["Enhanced RAG", "RAG", "Ask Questions", "Pinecone", "Combined RAG"],
+            "WhatsApp Integration": ["WhatsApp", "Webhook"],
+            "Student PDF Management": ["Student PDF", "Material Isolation"],
+            "Authentication": ["Auth", "Login", "Register", "Token", "Access Control"],
+            "Core Features": ["API", "Quiz", "Notes", "Profile"],
+            "AI Integration": ["Gemini", "AI", "Analysis"],
+            "Payment System": ["Payment", "Subscription", "Razorpay"],
+            "Error Handling": ["Error", "Invalid", "Fallback"]
+        }
+        
+        print(f"\n🎯 Feature Breakdown:")
+        for category, keywords in categories.items():
+            category_tests = [r for r in self.test_results if any(keyword.lower() in r["test"].lower() for keyword in keywords)]
+            if category_tests:
+                category_passed = sum(1 for t in category_tests if t["success"])
+                print(f"  {category}: {category_passed}/{len(category_tests)} passed")
+        
+        # Show priority test results
+        priority_tests = [r for r in self.test_results if any(keyword in r["test"] for keyword in ["Enhanced RAG", "WhatsApp", "Student PDF", "Combined RAG"])]
+        if priority_tests:
+            priority_passed = sum(1 for t in priority_tests if t["success"])
+            print(f"\n🚨 PRIORITY FEATURES: {priority_passed}/{len(priority_tests)} passed")
+        
+        if failed_tests > 0:
+            print("\n🔍 FAILED TESTS:")
+            for result in self.test_results:
+                if not result["success"]:
+                    print(f"  • {result['test']}: {result['message']}")
+
 async def main():
     """Main test runner"""
     async with EduAgentTester() as tester:
