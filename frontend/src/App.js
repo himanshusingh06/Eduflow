@@ -182,6 +182,7 @@ const Sidebar = ({ activeTab, setActiveTab, user, isMobileOpen, setIsMobileOpen 
         { id: 'profile', label: 'My Profile', icon: User },
         { id: 'study', label: 'Study Content', icon: BookOpen },
         { id: 'quiz', label: 'Quizzes', icon: PenTool },
+        { id: 'dynamic-quiz', label: 'Custom Quiz', icon: Brain },
         { id: 'ask', label: 'Ask AI', icon: Brain },
         { id: 'notes', label: 'My Notes', icon: BookOpen },
         { id: 'learning-path', label: 'Learning Path', icon: Brain },
