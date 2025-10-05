@@ -1760,6 +1760,277 @@ Key Points:"""
         logging.error(f"Note summarization error: {e}")
         return "Failed to summarize notes. Please try again."
 
+# ============= DYNAMIC QUIZ FUNCTIONS =============
+
+async def generate_dynamic_quiz(request: DynamicQuizRequest) -> Dict[str, Any]:
+    """Generate dynamic quiz using Gemini AI based on user inputs"""
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        prompt = f"""Generate a {request.difficulty} difficulty quiz for {request.grade_level or 'Grade 8'} students.
+
+Subject: {request.subject}
+Topic: {request.topic}
+Number of Questions: {request.num_questions}
+Difficulty Level: {request.difficulty}
+
+Please create exactly {request.num_questions} multiple choice questions. Each question should have 4 options (A, B, C, D) with only one correct answer.
+
+Format your response as JSON:
+{{
+  "quiz_title": "Quiz title based on topic",
+  "subject": "{request.subject}",
+  "topic": "{request.topic}",
+  "difficulty": "{request.difficulty}",
+  "grade_level": "{request.grade_level}",
+  "questions": [
+    {{
+      "question_number": 1,
+      "question": "Question text here",
+      "options": {{
+        "A": "Option A text",
+        "B": "Option B text", 
+        "C": "Option C text",
+        "D": "Option D text"
+      }},
+      "correct_answer": "A",
+      "explanation": "Brief explanation of why this is correct"
+    }}
+  ]
+}}
+
+Make sure questions are appropriate for {request.difficulty} difficulty and {request.grade_level} level."""
+
+        response = model.generate_content(prompt)
+        
+        # Parse the JSON response
+        import re
+        json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+        if json_match:
+            quiz_data = json.loads(json_match.group())
+            quiz_data["id"] = str(uuid.uuid4())
+            quiz_data["created_at"] = datetime.utcnow().isoformat()
+            return quiz_data
+        else:
+            raise ValueError("Could not parse quiz JSON")
+            
+    except Exception as e:
+        logging.error(f"Dynamic quiz generation error: {e}")
+        # Return fallback quiz
+        return {
+            "id": str(uuid.uuid4()),
+            "quiz_title": f"{request.topic} Quiz",
+            "subject": request.subject,
+            "topic": request.topic,
+            "difficulty": request.difficulty,
+            "grade_level": request.grade_level,
+            "questions": [
+                {
+                    "question_number": 1,
+                    "question": f"What is a key concept in {request.topic}?",
+                    "options": {
+                        "A": "Option A",
+                        "B": "Option B", 
+                        "C": "Option C",
+                        "D": "Option D"
+                    },
+                    "correct_answer": "A",
+                    "explanation": "This is the correct answer based on the topic."
+                }
+            ],
+            "created_at": datetime.utcnow().isoformat()
+        }
+
+async def evaluate_quiz_with_gemini(quiz_data: Dict[str, Any], student_answers: Dict[str, str], student_name: str) -> QuizEvaluation:
+    """Evaluate quiz performance using Gemini AI"""
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        # Calculate basic score
+        correct_count = 0
+        total_questions = len(quiz_data["questions"])
+        
+        detailed_analysis = []
+        for question in quiz_data["questions"]:
+            q_num = str(question["question_number"])
+            student_answer = student_answers.get(q_num, "")
+            correct_answer = question["correct_answer"]
+            
+            is_correct = student_answer == correct_answer
+            if is_correct:
+                correct_count += 1
+                
+            detailed_analysis.append({
+                "question": question["question"],
+                "student_answer": student_answer,
+                "correct_answer": correct_answer,
+                "is_correct": is_correct,
+                "explanation": question["explanation"]
+            })
+        
+        percentage = (correct_count / total_questions) * 100
+        
+        # Generate AI evaluation
+        analysis_prompt = f"""Analyze this quiz performance for student {student_name}:
+
+Quiz Topic: {quiz_data["topic"]} ({quiz_data["subject"]})
+Difficulty: {quiz_data["difficulty"]}
+Score: {correct_count}/{total_questions} ({percentage:.1f}%)
+
+Detailed Performance:
+{json.dumps(detailed_analysis, indent=2)}
+
+Please provide:
+1. A comprehensive evaluation report (2-3 paragraphs)
+2. List of 3-5 specific recommendations for improvement
+3. List of 2-3 strengths demonstrated
+4. List of 2-3 areas that need work
+
+Format as JSON:
+{{
+  "evaluation_report": "Detailed performance analysis...",
+  "recommendations": ["recommendation1", "recommendation2", ...],
+  "strengths": ["strength1", "strength2", ...],
+  "weaknesses": ["weakness1", "weakness2", ...]
+}}"""
+
+        ai_response = model.generate_content(analysis_prompt)
+        
+        # Parse AI evaluation
+        import re
+        json_match = re.search(r'\{.*\}', ai_response.text, re.DOTALL)
+        if json_match:
+            ai_eval = json.loads(json_match.group())
+        else:
+            ai_eval = {
+                "evaluation_report": f"Student scored {percentage:.1f}% on the {quiz_data['topic']} quiz.",
+                "recommendations": ["Review incorrect answers", "Practice more questions"],
+                "strengths": ["Shows understanding of basic concepts"],
+                "weaknesses": ["Needs improvement in specific areas"]
+            }
+        
+        return QuizEvaluation(
+            student_id="",  # Will be set by caller
+            quiz_data=quiz_data,
+            student_answers=student_answers,
+            score=correct_count,
+            total_questions=total_questions,
+            percentage=percentage,
+            evaluation_report=ai_eval["evaluation_report"],
+            recommendations=ai_eval["recommendations"],
+            strengths=ai_eval["strengths"],
+            weaknesses=ai_eval["weaknesses"]
+        )
+        
+    except Exception as e:
+        logging.error(f"Quiz evaluation error: {e}")
+        # Return basic evaluation
+        return QuizEvaluation(
+            student_id="",
+            quiz_data=quiz_data,
+            student_answers=student_answers,
+            score=correct_count,
+            total_questions=total_questions,
+            percentage=percentage,
+            evaluation_report=f"Quiz completed with {percentage:.1f}% score.",
+            recommendations=["Review the questions and explanations"],
+            strengths=["Completed the quiz"],
+            weaknesses=["Areas for improvement identified"]
+        )
+
+# ============= EMAIL FUNCTIONS =============
+
+async def send_quiz_report_email(email_report: EmailReport) -> bool:
+    """Send formatted quiz report via email"""
+    try:
+        # Create message
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_USER
+        msg['To'] = email_report.recipient_email
+        msg['Subject'] = f"Quiz Report: {email_report.quiz_title}"
+        
+        # Create HTML email body
+        html_body = f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                .header {{ background-color: #10b981; color: white; padding: 20px; text-align: center; }}
+                .content {{ padding: 20px; }}
+                .score-box {{ background-color: #f0f9ff; border: 2px solid #0ea5e9; padding: 15px; margin: 15px 0; text-align: center; }}
+                .recommendations {{ background-color: #fef3c7; padding: 15px; margin: 15px 0; }}
+                .footer {{ background-color: #f9fafb; padding: 15px; text-align: center; font-size: 12px; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>🎓 EduAgent Quiz Report</h1>
+                <h2>{email_report.quiz_title}</h2>
+            </div>
+            
+            <div class="content">
+                <h3>Dear {email_report.student_name},</h3>
+                
+                <p>Your quiz has been evaluated and here are your results:</p>
+                
+                <div class="score-box">
+                    <h2>Your Score: {email_report.score}/{email_report.total_questions}</h2>
+                    <h3>Percentage: {email_report.percentage:.1f}%</h3>
+                    <p><strong>Performance Level: {"Excellent" if email_report.percentage >= 90 else "Good" if email_report.percentage >= 70 else "Needs Improvement"}</strong></p>
+                </div>
+                
+                <h3>📊 Detailed Evaluation:</h3>
+                <p>{email_report.evaluation_report}</p>
+                
+                <div class="recommendations">
+                    <h3>💡 Recommendations for Improvement:</h3>
+                    <ul>
+        """
+        
+        for rec in email_report.recommendations:
+            html_body += f"<li>{rec}</li>"
+            
+        html_body += f"""
+                    </ul>
+                </div>
+                
+                <h3>🎯 Next Steps:</h3>
+                <ul>
+                    <li>Review the topics where you scored lower</li>
+                    <li>Practice similar questions to strengthen your understanding</li>
+                    <li>Ask your teacher for help on challenging concepts</li>
+                    <li>Take more quizzes to track your progress</li>
+                </ul>
+                
+                <p>Keep up the great work and continue learning!</p>
+            </div>
+            
+            <div class="footer">
+                <p>This report was generated by EduAgent AI Learning Platform</p>
+                <p>Contact your teacher if you have any questions about this report.</p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Attach HTML body
+        msg.attach(MIMEText(html_body, 'html'))
+        
+        # Send email
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(EMAIL_USER, EMAIL_PASSWORD)
+        text = msg.as_string()
+        server.sendmail(EMAIL_USER, email_report.recipient_email, text)
+        server.quit()
+        
+        logging.info(f"Quiz report sent to {email_report.recipient_email}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"Email sending error: {e}")
+        return False
+
 @api_router.get("/my-subscription")
 async def get_my_subscription(current_user: User = Depends(get_current_user)):
     """Get current user's subscription"""
