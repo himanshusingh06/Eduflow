@@ -2431,12 +2431,14 @@ async def rag_question(
     query_request: RAGQueryRequest,
     current_user: User = Depends(get_current_user)
 ):
-    """Ask questions based on uploaded course materials"""
+    """Ask questions based on uploaded course materials and AI knowledge"""
     try:
+        # Query RAG system with teacher materials included
         answer = await query_rag_system(
-            query_request.question,
-            query_request.subject,
-            query_request.grade_level
+            question=query_request.question,
+            subject=query_request.subject,
+            grade_level=query_request.grade_level,
+            include_teacher_materials=True
         )
         
         # Save question for tracking
@@ -2445,7 +2447,7 @@ async def rag_question(
             question=query_request.question,
             subject=query_request.subject or "General",
             answer=answer,
-            answered_by="RAG_AI"
+            answered_by="ENHANCED_RAG_AI"
         )
         
         await db.questions.insert_one(question_record.dict())
@@ -2453,12 +2455,43 @@ async def rag_question(
         return {
             "question": query_request.question,
             "answer": answer,
-            "source": "course_materials",
+            "source": "course_materials_and_ai",
             "answered_at": datetime.utcnow().isoformat()
         }
         
     except Exception as e:
         logging.error(f"RAG question error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/materials/available")
+async def get_available_materials(current_user: User = Depends(get_current_user)):
+    """Get available study materials for students"""
+    try:
+        # Get both teacher and student materials
+        teacher_materials = await db.study_materials.find({"is_processed": True}).to_list(100)
+        
+        # If student, also get their personal PDFs
+        student_pdfs = []
+        if current_user.role == "student":
+            student_pdfs = await db.student_pdfs.find({"student_id": current_user.id}).to_list(50)
+        
+        # Clean ObjectIds
+        for material in teacher_materials:
+            if "_id" in material:
+                del material["_id"]
+        
+        for pdf in student_pdfs:
+            if "_id" in pdf:
+                del pdf["_id"]
+        
+        return {
+            "teacher_materials": teacher_materials,
+            "my_pdfs": student_pdfs,
+            "total_materials": len(teacher_materials) + len(student_pdfs)
+        }
+        
+    except Exception as e:
+        logging.error(f"Get available materials error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/materials/available")
