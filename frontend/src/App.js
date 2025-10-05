@@ -2823,6 +2823,8 @@ const Dashboard = () => {
         return <StudyContent />;
       case 'quiz':
         return <QuizSystem />;
+      case 'dynamic-quiz':
+        return <DynamicQuiz />;
       case 'ask':
         return <AskAI />;
       case 'create-content':
