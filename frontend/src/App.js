@@ -1531,16 +1531,21 @@ const AskAI = () => {
       {/* Available Materials Info */}
       {availableMaterials.length > 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <h3 className="font-medium text-blue-900 mb-2">Available Course Materials</h3>
+          <h3 className="font-medium text-blue-900 mb-2">📚 Available Study Materials ({availableMaterials.length})</h3>
           <div className="space-y-1">
-            {availableMaterials.slice(0, 3).map((material) => (
-              <p key={material.id} className="text-blue-700 text-sm">
-                📄 {material.original_filename} ({material.subject})
+            {availableMaterials.slice(0, 4).map((material, idx) => (
+              <p key={material.id || idx} className="text-blue-700 text-sm">
+                📄 {material.original_filename || material.filename} 
+                {material.subject && ` (${material.subject})`}
+                {material.student_id ? ' 👤 Your PDF' : ' 🎓 Course Material'}
               </p>
             ))}
-            {availableMaterials.length > 3 && (
-              <p className="text-blue-700 text-sm">+ {availableMaterials.length - 3} more materials</p>
+            {availableMaterials.length > 4 && (
+              <p className="text-blue-700 text-sm">+ {availableMaterials.length - 4} more materials available</p>
             )}
+          </div>
+          <div className="mt-2 text-xs text-blue-600">
+            💡 The AI can search through all these materials to answer your questions!
           </div>
         </div>
       )}
