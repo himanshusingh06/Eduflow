@@ -2318,6 +2318,247 @@ async def summarize_note(
         logging.error(f"Note summarization error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ============= DYNAMIC QUIZ ROUTES =============
+
+@api_router.post("/quiz/generate-dynamic")
+async def create_dynamic_quiz(
+    quiz_request: DynamicQuizRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Generate dynamic quiz based on user inputs"""
+    try:
+        # Generate quiz using Gemini
+        quiz_data = await generate_dynamic_quiz(quiz_request)
+        
+        # Save quiz to database (optional, for tracking)
+        quiz_record = {
+            "id": quiz_data["id"],
+            "title": quiz_data["quiz_title"],
+            "subject": quiz_data["subject"],
+            "topic": quiz_data["topic"],
+            "difficulty": quiz_data["difficulty"],
+            "grade_level": quiz_data["grade_level"],
+            "questions": quiz_data["questions"],
+            "created_by": current_user.id,
+            "created_at": datetime.utcnow(),
+            "quiz_type": "dynamic"
+        }
+        
+        await db.dynamic_quizzes.insert_one(quiz_record)
+        
+        return {
+            "success": True,
+            "quiz": quiz_data,
+            "message": f"Dynamic quiz generated with {len(quiz_data['questions'])} questions"
+        }
+        
+    except Exception as e:
+        logging.error(f"Dynamic quiz creation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/quiz/submit-dynamic/{quiz_id}")
+async def submit_dynamic_quiz(
+    quiz_id: str,
+    student_answers: Dict[str, str],
+    current_user: User = Depends(get_current_user)
+):
+    """Submit dynamic quiz and get AI evaluation with email report"""
+    try:
+        # Get quiz data
+        quiz_record = await db.dynamic_quizzes.find_one({"id": quiz_id})
+        if not quiz_record:
+            raise HTTPException(status_code=404, detail="Quiz not found")
+        
+        # Evaluate with Gemini AI
+        evaluation = await evaluate_quiz_with_gemini(
+            quiz_record, 
+            student_answers, 
+            current_user.name
+        )
+        evaluation.student_id = current_user.id
+        
+        # Save evaluation to database
+        eval_record = evaluation.dict()
+        eval_record["quiz_id"] = quiz_id
+        eval_record["created_at"] = datetime.utcnow()
+        
+        await db.quiz_evaluations.insert_one(eval_record)
+        
+        # Send email report if student has email
+        if hasattr(current_user, 'email') and current_user.email:
+            email_report = EmailReport(
+                recipient_email=current_user.email,
+                student_name=current_user.name,
+                quiz_title=quiz_record["title"],
+                score=evaluation.score,
+                total_questions=evaluation.total_questions,
+                percentage=evaluation.percentage,
+                evaluation_report=evaluation.evaluation_report,
+                recommendations=evaluation.recommendations
+            )
+            
+            email_sent = await send_quiz_report_email(email_report)
+            
+            return {
+                "success": True,
+                "evaluation": evaluation.dict(),
+                "email_sent": email_sent,
+                "message": "Quiz evaluated successfully" + (" and report sent to your email" if email_sent else "")
+            }
+        else:
+            return {
+                "success": True,
+                "evaluation": evaluation.dict(),
+                "email_sent": False,
+                "message": "Quiz evaluated successfully. Add email to your profile to receive reports."
+            }
+        
+    except Exception as e:
+        logging.error(f"Dynamic quiz submission error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/quiz/my-dynamic-attempts")
+async def get_my_dynamic_quiz_attempts(current_user: User = Depends(get_current_user)):
+    """Get student's dynamic quiz attempts and evaluations"""
+    try:
+        evaluations = await db.quiz_evaluations.find({"student_id": current_user.id}).sort("created_at", -1).to_list(50)
+        
+        # Clean ObjectIds
+        for eval in evaluations:
+            if "_id" in eval:
+                del eval["_id"]
+        
+        return {"evaluations": evaluations}
+        
+    except Exception as e:
+        logging.error(f"Quiz attempts retrieval error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============= STUDENT PDF UPLOAD ROUTES =============
+
+@api_router.post("/student/upload-pdf")
+async def upload_student_pdf(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """Allow students to upload their own PDFs for RAG"""
+    try:
+        if current_user.role != "student":
+            raise HTTPException(status_code=403, detail="Student access required")
+        
+        # Validate file type
+        if not file.filename.lower().endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported")
+        
+        # Read file content
+        file_content = await file.read()
+        file_size = len(file_content)
+        
+        # Generate unique ID
+        upload_id = str(uuid.uuid4())
+        
+        # Extract text from PDF
+        pages_text = await extract_text_from_pdf(file_content)
+        
+        if not pages_text:
+            raise HTTPException(status_code=400, detail="Could not extract text from PDF")
+        
+        # Store PDF record
+        pdf_record = StudentPDFUpload(
+            student_id=current_user.id,
+            filename=f"{upload_id}_{file.filename}",
+            original_filename=file.filename,
+            file_size=file_size
+        )
+        
+        await db.student_pdfs.insert_one(pdf_record.dict())
+        
+        # Create embeddings with student-specific material ID
+        material_id = f"student_{current_user.id}_{upload_id}"
+        success = await create_rag_embeddings(material_id, pages_text, "student")
+        
+        if success:
+            return {
+                "success": True,
+                "material_id": material_id,
+                "filename": file.filename,
+                "pages_processed": len(pages_text),
+                "message": "PDF uploaded and processed successfully! You can now ask questions about this document."
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to process PDF for Q&A")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Student PDF upload error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/student/my-pdfs")
+async def get_my_uploaded_pdfs(current_user: User = Depends(get_current_user)):
+    """Get student's uploaded PDFs"""
+    try:
+        if current_user.role != "student":
+            raise HTTPException(status_code=403, detail="Student access required")
+        
+        pdfs = await db.student_pdfs.find({"student_id": current_user.id}).sort("created_at", -1).to_list(50)
+        
+        # Clean ObjectIds
+        for pdf in pdfs:
+            if "_id" in pdf:
+                del pdf["_id"]
+        
+        return {"pdfs": pdfs}
+        
+    except Exception as e:
+        logging.error(f"Student PDFs retrieval error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/student/ask-my-pdf")
+async def ask_question_to_my_pdf(
+    material_id: str,
+    question: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Ask questions specifically to student's uploaded PDF"""
+    try:
+        if current_user.role != "student":
+            raise HTTPException(status_code=403, detail="Student access required")
+        
+        # Verify the material belongs to the student
+        if not material_id.startswith(f"student_{current_user.id}_"):
+            raise HTTPException(status_code=403, detail="You can only query your own uploaded documents")
+        
+        # Query RAG system with material filter
+        answer = await query_rag_system(
+            question=question,
+            material_filter=material_id
+        )
+        
+        # Save question for tracking
+        question_record = Question(
+            student_id=current_user.id,
+            question=question,
+            subject="Personal Document",
+            answer=answer,
+            answered_by="PDF_RAG_AI"
+        )
+        
+        await db.questions.insert_one(question_record.dict())
+        
+        return {
+            "question": question,
+            "answer": answer,
+            "source": "your_uploaded_document",
+            "material_id": material_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Student PDF query error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ============= QUIZ ANALYSIS ROUTES =============
 
 @api_router.get("/quiz/analysis/{attempt_id}")
