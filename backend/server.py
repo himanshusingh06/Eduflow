@@ -1626,36 +1626,43 @@ async def extract_text_from_pdf(file_content: bytes) -> List[str]:
         logging.error(f"PDF extraction error: {e}")
         return []
 
-async def create_rag_embeddings(material_id: str, pages_text: List[str]):
-    """Create embeddings for RAG system"""
+async def create_rag_embeddings(material_id: str, pages_text: List[str], upload_type: str = "teacher"):
+    """Create embeddings for RAG system using Pinecone"""
     try:
-        collection_name = f"material_{material_id}"
-        
-        try:
-            collection = chroma_client.get_collection(collection_name)
-        except:
-            collection = chroma_client.create_collection(collection_name)
+        if not pinecone_index:
+            logging.error("Pinecone index not available")
+            return False
         
         # Create embeddings for each page
         for page_num, text in enumerate(pages_text):
             if text.strip():  # Only process non-empty pages
                 # Generate embedding
-                embedding = sentence_model.encode(text)
+                embedding = sentence_model.encode(text).tolist()
                 
-                # Add to vector database
-                collection.add(
-                    embeddings=[embedding.tolist()],
-                    documents=[text],
-                    metadatas=[{"page_number": page_num, "material_id": material_id}],
-                    ids=[f"{material_id}_page_{page_num}"]
-                )
+                # Create unique ID
+                doc_id = f"{material_id}_page_{page_num}"
                 
-                # Store document record
+                # Upsert to Pinecone
+                pinecone_index.upsert([
+                    {
+                        "id": doc_id,
+                        "values": embedding,
+                        "metadata": {
+                            "material_id": material_id,
+                            "page_number": page_num,
+                            "text": text[:1000],  # Store first 1000 chars in metadata
+                            "upload_type": upload_type,
+                            "full_text": text
+                        }
+                    }
+                ])
+                
+                # Store document record in MongoDB
                 rag_doc = RAGDocument(
                     material_id=material_id,
                     content=text,
                     page_number=page_num,
-                    embedding_id=f"{material_id}_page_{page_num}"
+                    embedding_id=doc_id
                 )
                 await db.rag_documents.insert_one(rag_doc.dict())
         
