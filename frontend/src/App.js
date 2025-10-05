@@ -185,6 +185,7 @@ const Sidebar = ({ activeTab, setActiveTab, user, isMobileOpen, setIsMobileOpen 
         { id: 'dynamic-quiz', label: 'Custom Quiz', icon: Brain },
         { id: 'ask', label: 'Ask AI', icon: Brain },
         { id: 'notes', label: 'My Notes', icon: BookOpen },
+        { id: 'my-pdfs', label: 'My PDFs', icon: Upload },
         { id: 'learning-path', label: 'Learning Path', icon: Brain },
         { id: 'subscription', label: 'Subscription', icon: GraduationCap },
       ];
