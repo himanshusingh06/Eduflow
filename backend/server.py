@@ -416,6 +416,24 @@ class StudentPDFUpload(BaseModel):
     file_size: int
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+# WhatsApp Models
+class WhatsAppMessage(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    phone_number: str
+    message_text: str
+    student_id: Optional[str] = None
+    message_type: str  # incoming, outgoing
+    processed: bool = False
+    response_sent: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class WhatsAppUser(BaseModel):
+    phone_number: str
+    student_id: Optional[str] = None
+    name: Optional[str] = None
+    registered: bool = False
+    last_activity: datetime = Field(default_factory=datetime.utcnow)
+
 # ============= UTILITY FUNCTIONS =============
 
 def hash_password(password: str) -> str:
