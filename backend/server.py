@@ -22,7 +22,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
-from pinecone import Pinecone
+from pinecone import Pinecone, ServerlessSpec
 from twilio.rest import Client as TwilioClient
 import json
 
