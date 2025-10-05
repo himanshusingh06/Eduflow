@@ -1671,38 +1671,44 @@ async def create_rag_embeddings(material_id: str, pages_text: List[str], upload_
         logging.error(f"RAG embedding error: {e}")
         return False
 
-async def query_rag_system(question: str, subject: str = None, grade_level: str = None) -> str:
-    """Query RAG system for course-related answers"""
+async def query_rag_system(question: str, subject: str = None, grade_level: str = None, material_filter: str = None) -> str:
+    """Query RAG system using Pinecone for course-related answers"""
     try:
-        # Get all relevant collections
-        collections = chroma_client.list_collections()
-        
-        if not collections:
-            return "No study materials have been uploaded yet. Please ask your teacher to upload course materials."
+        if not pinecone_index:
+            return "RAG system not available. Please contact administrator."
         
         # Generate query embedding
-        query_embedding = sentence_model.encode(question)
+        query_embedding = sentence_model.encode(question).tolist()
         
-        # Search across all material collections
-        all_results = []
-        for collection in collections:
-            try:
-                results = collection.query(
-                    query_embeddings=[query_embedding.tolist()],
-                    n_results=3
-                )
-                if results['documents']:
-                    all_results.extend(results['documents'][0])
-            except:
-                continue
+        # Build filter for specific materials if provided
+        filter_dict = {}
+        if material_filter:
+            filter_dict["material_id"] = material_filter
         
-        if not all_results:
-            return "I couldn't find relevant information in the uploaded materials. Please try a different question."
+        # Search in Pinecone
+        results = pinecone_index.query(
+            vector=query_embedding,
+            top_k=5,
+            include_metadata=True,
+            filter=filter_dict if filter_dict else None
+        )
+        
+        if not results.matches:
+            return "I couldn't find relevant information in the uploaded materials. Please try a different question or upload more course materials."
+        
+        # Extract relevant text from results
+        contexts = []
+        for match in results.matches:
+            if match.score > 0.7:  # Only use high-confidence matches
+                contexts.append(match.metadata.get('full_text', match.metadata.get('text', '')))
+        
+        if not contexts:
+            return "I couldn't find sufficiently relevant information to answer your question. Please try rephrasing or ask about different content."
         
         # Use Gemini to generate answer based on retrieved context
         model = genai.GenerativeModel('gemini-2.5-flash')
         
-        context = "\n\n".join(all_results[:3])  # Use top 3 results
+        context = "\n\n".join(contexts[:3])  # Use top 3 results
         
         prompt = f"""Based on the following course materials, answer the student's question:
 
