@@ -87,6 +87,17 @@ except Exception as e:
 # Initialize sentence transformer for embeddings
 sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
 
+# Initialize Twilio client
+try:
+    if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
+        twilio_client = TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    else:
+        twilio_client = None
+        logging.warning("Twilio credentials not provided, WhatsApp features disabled")
+except Exception as e:
+    logging.error(f"Twilio initialization error: {e}")
+    twilio_client = None
+
 # Razorpay Configuration
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET") 
