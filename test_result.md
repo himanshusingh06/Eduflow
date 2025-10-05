@@ -453,15 +453,18 @@ test_plan:
 
   - task: "Combined RAG System with Multiple Sources"
     implemented: true
-    working: false
+    working: true
     file: "server.py"
-    stuck_count: 1
+    stuck_count: 0
     priority: "high"
     needs_retesting: false
     status_history:
       - working: false
         agent: "testing"
         comment: "✅ Combined RAG query processing implemented with confidence-based filtering (0.6 threshold), enhanced context generation for better answers, proper subject filtering. ❌ Pinecone integration not operational due to initialization error, but fallback to general AI knowledge working correctly."
+      - working: true
+        agent: "testing"
+        comment: "✅ COMBINED RAG SYSTEM OPERATIONAL: Pinecone integration fixed with ServerlessSpec configuration. Multi-source RAG functionality working - queries can find both teacher and student materials. Proper source attribution in responses with 'Answer from Course Materials' prefix. Material filtering and isolation working correctly. Enhanced context generation operational. Cross-reference between teacher and student materials configured. Vector similarity search with confidence-based filtering (>0.6) working. System gracefully falls back to general AI when no relevant materials found."
 
 agent_communication:
   - agent: "main"
