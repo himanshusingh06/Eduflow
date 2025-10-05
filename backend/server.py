@@ -77,9 +77,16 @@ try:
         pc.create_index(
             name=index_name,
             dimension=384,  # all-MiniLM-L6-v2 dimension
-            metric="cosine"
+            metric="cosine",
+            spec=ServerlessSpec(
+                cloud="aws",
+                region="us-east-1"
+            )
         )
+        logging.info("Pinecone index created successfully")
+    
     pinecone_index = pc.Index(index_name)
+    logging.info("Pinecone index initialized successfully")
 except Exception as e:
     logging.error(f"Pinecone initialization error: {e}")
     pinecone_index = None
