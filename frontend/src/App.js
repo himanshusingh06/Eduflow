@@ -2971,6 +2971,236 @@ const StudentProfile = () => {
   );
 };
 
+// Student PDF Manager Component
+const StudentPDFManager = () => {
+  const [pdfs, setPdfs] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [selectedPdf, setSelectedPdf] = useState(null);
+  const [question, setQuestion] = useState('');
+  const [askLoading, setAskLoading] = useState(false);
+  const [conversations, setConversations] = useState({});
+
+  useEffect(() => {
+    fetchMyPdfs();
+  }, []);
+
+  const fetchMyPdfs = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get('/student/my-pdfs');
+      setPdfs(response.data.pdfs || []);
+    } catch (error) {
+      toast.error('Failed to load PDFs');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      toast.error('Please upload only PDF files');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await axios.post('/student/upload-pdf', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      toast.success(`PDF uploaded! ${response.data.pages_processed} pages processed for Q&A.`);
+      fetchMyPdfs();
+      event.target.value = ''; // Reset file input
+    } catch (error) {
+      toast.error('Failed to upload PDF');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const askQuestion = async () => {
+    if (!question.trim() || !selectedPdf) return;
+
+    setAskLoading(true);
+    try {
+      // Extract material_id from the PDF (need to construct it)
+      const materialId = `student_${selectedPdf.student_id}_${selectedPdf.filename.split('_')[0]}`;
+      
+      const response = await axios.post('/student/ask-my-pdf', null, {
+        params: {
+          material_id: materialId,
+          question: question
+        }
+      });
+
+      // Add to conversation for this PDF
+      const pdfId = selectedPdf.filename;
+      setConversations(prev => ({
+        ...prev,
+        [pdfId]: [
+          ...(prev[pdfId] || []),
+          {
+            type: 'question',
+            text: question,
+            timestamp: new Date()
+          },
+          {
+            type: 'answer',
+            text: response.data.answer,
+            timestamp: new Date()
+          }
+        ]
+      }));
+
+      setQuestion('');
+      toast.success('Question answered based on your PDF!');
+    } catch (error) {
+      toast.error('Failed to get answer from PDF');
+    } finally {
+      setAskLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">My PDF Documents</h1>
+        <p className="text-gray-600">Upload your own PDFs and ask questions about them</p>
+      </div>
+
+      {/* Upload Section */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload New PDF</h3>
+        
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Choose PDF File (Study materials, notes, textbooks, etc.)
+          </label>
+          <input
+            type="file"
+            accept=".pdf"
+            onChange={handleFileUpload}
+            disabled={uploading}
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+          />
+        </div>
+
+        {uploading && (
+          <div className="text-center text-emerald-600">
+            <p>Processing PDF and creating searchable index...</p>
+          </div>
+        )}
+      </div>
+
+      {/* My PDFs */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">My Uploaded Documents</h3>
+        
+        {loading ? (
+          <p className="text-gray-500">Loading PDFs...</p>
+        ) : pdfs.length > 0 ? (
+          <div className="grid gap-4">
+            {pdfs.map((pdf) => (
+              <div 
+                key={pdf.filename} 
+                className={`border rounded-lg p-4 cursor-pointer hover:bg-gray-50 ${
+                  selectedPdf?.filename === pdf.filename ? 'bg-emerald-50 border-emerald-500' : ''
+                }`}
+                onClick={() => setSelectedPdf(pdf)}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium text-gray-900">📄 {pdf.original_filename}</h4>
+                    <p className="text-gray-500 text-sm">
+                      Uploaded: {new Date(pdf.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <div className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
+                      ✅ Ready for Q&A
+                    </div>
+                    <p className="text-gray-500 text-xs mt-1">
+                      {(pdf.file_size / 1024).toFixed(1)} KB
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg">No PDFs uploaded yet</p>
+            <p className="text-gray-400">Upload your first PDF to start asking questions</p>
+          </div>
+        )}
+      </div>
+
+      {/* Q&A Section */}
+      {selectedPdf && (
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Ask Questions about: {selectedPdf.original_filename}
+          </h3>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Your Question</label>
+              <textarea
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                placeholder="Ask anything about this document..."
+                className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 min-h-[100px]"
+              />
+            </div>
+
+            <button
+              onClick={askQuestion}
+              disabled={askLoading || !question.trim()}
+              className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {askLoading ? 'Searching Document...' : 'Ask Question'}
+            </button>
+          </div>
+
+          {/* Conversation History for selected PDF */}
+          {conversations[selectedPdf.filename] && conversations[selectedPdf.filename].length > 0 && (
+            <div className="mt-6 space-y-4">
+              <h4 className="text-lg font-semibold text-gray-900">Q&A History</h4>
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {conversations[selectedPdf.filename].map((msg, idx) => (
+                  <div key={idx} className={`p-4 rounded-xl ${
+                    msg.type === 'question' 
+                      ? 'bg-emerald-50 border-l-4 border-emerald-500' 
+                      : 'bg-blue-50 border-l-4 border-blue-500'
+                  }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-sm text-gray-600">
+                        {msg.type === 'question' ? '❓ Your Question:' : '🤖 AI Answer:'}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {msg.timestamp.toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <p className="text-gray-800 whitespace-pre-wrap">{msg.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // My Children Component (for parents)
 const MyChildren = () => {
   const [children, setChildren] = useState([]);
