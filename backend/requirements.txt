@@ -113,6 +113,7 @@ sentence-transformers
 chromadb
 pinecone-client
 email-validator
+twilio
 tenacity==9.1.2
 tiktoken==0.11.0
 tokenizers==0.22.1
