@@ -2834,6 +2834,102 @@ async def ask_question_to_my_pdf(
         logging.error(f"Student PDF query error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ============= WHATSAPP ROUTES =============
+
+@api_router.post("/whatsapp/webhook")
+async def whatsapp_webhook(request: Request):
+    """Handle WhatsApp webhook from Twilio"""
+    try:
+        form_data = await request.form()
+        
+        # Extract Twilio webhook data
+        from_number = form_data.get('From', '')
+        message_body = form_data.get('Body', '')
+        message_sid = form_data.get('MessageSid', '')
+        
+        if not from_number or not message_body:
+            return {"status": "error", "message": "Missing required fields"}
+        
+        logging.info(f"WhatsApp message received from {from_number}: {message_body}")
+        
+        # Store incoming message
+        whatsapp_msg = WhatsAppMessage(
+            phone_number=from_number,
+            message_text=message_body,
+            message_type="incoming"
+        )
+        
+        await db.whatsapp_messages.insert_one(whatsapp_msg.dict())
+        
+        # Process message and get AI response
+        ai_response = await process_whatsapp_message(from_number, message_body)
+        
+        # Send response via WhatsApp
+        response_sent = await send_whatsapp_message(from_number, ai_response)
+        
+        # Store outgoing message
+        if response_sent:
+            response_msg = WhatsAppMessage(
+                phone_number=from_number,
+                message_text=ai_response,
+                message_type="outgoing",
+                response_sent=True
+            )
+            await db.whatsapp_messages.insert_one(response_msg.dict())
+        
+        return {"status": "success", "response_sent": response_sent}
+        
+    except Exception as e:
+        logging.error(f"WhatsApp webhook error: {e}")
+        return {"status": "error", "message": str(e)}
+
+@api_router.get("/whatsapp/users")
+async def get_whatsapp_users(current_user: User = Depends(get_current_user)):
+    """Get WhatsApp users (admin only)"""
+    try:
+        if current_user.role not in ["teacher", "admin"]:
+            raise HTTPException(status_code=403, detail="Admin or teacher access required")
+        
+        users = await db.whatsapp_users.find({}).to_list(100)
+        
+        # Clean ObjectIds
+        for user in users:
+            if "_id" in user:
+                del user["_id"]
+        
+        return {"whatsapp_users": users}
+        
+    except Exception as e:
+        logging.error(f"WhatsApp users error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/whatsapp/messages")
+async def get_whatsapp_messages(
+    phone_number: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Get WhatsApp message history"""
+    try:
+        if current_user.role not in ["teacher", "admin"]:
+            raise HTTPException(status_code=403, detail="Admin or teacher access required")
+        
+        query = {}
+        if phone_number:
+            query["phone_number"] = phone_number
+        
+        messages = await db.whatsapp_messages.find(query).sort("created_at", -1).to_list(100)
+        
+        # Clean ObjectIds
+        for msg in messages:
+            if "_id" in msg:
+                del msg["_id"]
+        
+        return {"messages": messages}
+        
+    except Exception as e:
+        logging.error(f"WhatsApp messages error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ============= QUIZ ANALYSIS ROUTES =============
 
 @api_router.get("/quiz/analysis/{attempt_id}")
