@@ -1465,7 +1465,9 @@ const AskAI = () => {
   const fetchAvailableMaterials = async () => {
     try {
       const response = await axios.get('/materials/available');
-      setAvailableMaterials(response.data.materials || []);
+      const teacherMaterials = response.data.teacher_materials || [];
+      const myPdfs = response.data.my_pdfs || [];
+      setAvailableMaterials([...teacherMaterials, ...myPdfs]);
     } catch (error) {
       console.error('Failed to load materials:', error);
     }
