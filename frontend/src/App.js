@@ -3237,6 +3237,8 @@ const Dashboard = () => {
         return <StudentProfile />;
       case 'notes':
         return <NotesManager />;
+      case 'my-pdfs':
+        return <StudentPDFManager />;
       case 'upload-materials':
         return <FileUpload />;
       case 'chat':
