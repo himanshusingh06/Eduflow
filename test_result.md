@@ -318,10 +318,13 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Quiz Evaluation & Email System"
-    - "Student PDF Management System"
-    - "Email Integration System"
-  stuck_tasks: []
+    - "Enhanced RAG System with Teacher Materials"
+    - "WhatsApp Integration System"
+    - "Student PDF Upload & Query System"
+    - "Combined RAG System with Multiple Sources"
+  stuck_tasks:
+    - "Enhanced RAG System with Teacher Materials"
+    - "Combined RAG System with Multiple Sources"
   test_all: false
   test_priority: "high_first"
 
