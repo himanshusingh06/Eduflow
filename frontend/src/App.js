@@ -3209,6 +3209,199 @@ const StudentPDFManager = () => {
   );
 };
 
+// WhatsApp Monitor Component (for teachers)
+const WhatsAppMonitor = () => {
+  const [whatsappUsers, setWhatsappUsers] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [selectedPhone, setSelectedPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetchWhatsappUsers();
+    fetchMessages();
+  }, []);
+
+  const fetchWhatsappUsers = async () => {
+    try {
+      const response = await axios.get('/whatsapp/users');
+      setWhatsappUsers(response.data.whatsapp_users || []);
+    } catch (error) {
+      console.error('Failed to load WhatsApp users:', error);
+      toast.error('Failed to load WhatsApp users');
+    }
+  };
+
+  const fetchMessages = async (phoneNumber = '') => {
+    setLoading(true);
+    try {
+      const params = phoneNumber ? `?phone_number=${phoneNumber}` : '';
+      const response = await axios.get(`/whatsapp/messages${params}`);
+      setMessages(response.data.messages || []);
+    } catch (error) {
+      console.error('Failed to load messages:', error);
+      toast.error('Failed to load messages');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePhoneSelect = (phone) => {
+    setSelectedPhone(phone);
+    fetchMessages(phone);
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">WhatsApp AI Tutor Monitor</h1>
+        <p className="text-gray-600">Monitor student interactions with the WhatsApp AI tutor</p>
+      </div>
+
+      {/* WhatsApp Setup Info */}
+      <div className="bg-green-50 border border-green-200 rounded-xl p-6">
+        <h3 className="text-lg font-semibold text-green-900 mb-2">📱 WhatsApp Integration Status</h3>
+        <div className="text-green-800">
+          <p>✅ WhatsApp webhook configured</p>
+          <p>🤖 AI tutor responses enabled</p>
+          <p>📊 Students can generate quizzes via WhatsApp</p>
+          <p>❓ Students can ask questions and get answers from course materials</p>
+        </div>
+        <div className="mt-3 text-sm text-green-700 bg-green-100 p-3 rounded">
+          <strong>For students to use WhatsApp AI:</strong><br />
+          1. Send a WhatsApp message to the configured number<br />
+          2. Start with "register [name] [email]" to register<br />
+          3. Then ask questions or use commands like "quiz math algebra"
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Registered Users */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            📞 Registered Users ({whatsappUsers.length})
+          </h3>
+          
+          {whatsappUsers.length > 0 ? (
+            <div className="space-y-3">
+              {whatsappUsers.map((user) => (
+                <div 
+                  key={user.phone_number}
+                  className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                    selectedPhone === user.phone_number 
+                      ? 'bg-emerald-100 border-emerald-500 border' 
+                      : 'bg-gray-50 hover:bg-gray-100'
+                  }`}
+                  onClick={() => handlePhoneSelect(user.phone_number)}
+                >
+                  <div className="font-medium text-gray-900">
+                    {user.name || 'Unknown'}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    {user.phone_number}
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      user.registered 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {user.registered ? '✅ Registered' : '⏳ Pending'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {new Date(user.last_activity).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <MessageCircle className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+              <p className="text-gray-500">No WhatsApp users yet</p>
+            </div>
+          )}
+        </div>
+
+        {/* Messages */}
+        <div className="lg:col-span-2 bg-white rounded-xl p-6 shadow-sm border">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">
+              💬 Recent Messages {selectedPhone && `(${selectedPhone})`}
+            </h3>
+            <button
+              onClick={() => fetchMessages(selectedPhone)}
+              disabled={loading}
+              className="px-3 py-1 bg-emerald-500 text-white rounded text-sm hover:bg-emerald-600 disabled:opacity-50"
+            >
+              {loading ? 'Loading...' : 'Refresh'}
+            </button>
+          </div>
+
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {messages.length > 0 ? (
+              messages.map((msg) => (
+                <div key={msg.id} className={`p-3 rounded-lg ${
+                  msg.message_type === 'incoming' 
+                    ? 'bg-blue-50 border-l-4 border-blue-500' 
+                    : 'bg-green-50 border-l-4 border-green-500'
+                }`}>
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="text-sm font-medium text-gray-600">
+                      {msg.message_type === 'incoming' ? '👤 Student' : '🤖 AI Tutor'}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {new Date(msg.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                  <p className="text-gray-800 whitespace-pre-wrap text-sm">
+                    {msg.message_text}
+                  </p>
+                  <div className="text-xs text-gray-500 mt-1">
+                    From: {msg.phone_number}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-500">
+                  {selectedPhone ? 'No messages from this user' : 'Select a user to view messages'}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Statistics */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">📊 WhatsApp Activity Stats</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-emerald-600">{whatsappUsers.length}</div>
+            <div className="text-gray-600 text-sm">Total Users</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-600">
+              {whatsappUsers.filter(u => u.registered).length}
+            </div>
+            <div className="text-gray-600 text-sm">Registered</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-purple-600">{messages.length}</div>
+            <div className="text-gray-600 text-sm">Total Messages</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-orange-600">
+              {messages.filter(m => m.message_type === 'incoming').length}
+            </div>
+            <div className="text-gray-600 text-sm">Student Messages</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // My Children Component (for parents)
 const MyChildren = () => {
   const [children, setChildren] = useState([]);
