@@ -47,11 +47,38 @@ PASSWORD_SALT = "eduagent_salt_2024"
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
+# Pinecone Configuration
+PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
+
+# Email Configuration
+SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+EMAIL_USER = os.environ.get("EMAIL_USER")
+EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
+
 # Configure Gemini
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Initialize vector database and sentence transformer
-chroma_client = chromadb.Client()
+# Initialize Pinecone
+pc = Pinecone(api_key=PINECONE_API_KEY)
+
+# Create or connect to index
+index_name = "eduagent-rag"
+try:
+    # Check if index exists, if not create it
+    existing_indexes = [index.name for index in pc.list_indexes()]
+    if index_name not in existing_indexes:
+        pc.create_index(
+            name=index_name,
+            dimension=384,  # all-MiniLM-L6-v2 dimension
+            metric="cosine"
+        )
+    pinecone_index = pc.Index(index_name)
+except Exception as e:
+    logging.error(f"Pinecone initialization error: {e}")
+    pinecone_index = None
+
+# Initialize sentence transformer for embeddings
 sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # Razorpay Configuration
