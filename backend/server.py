@@ -2092,6 +2092,216 @@ async def send_quiz_report_email(email_report: EmailReport) -> bool:
         logging.error(f"Email sending error: {e}")
         return False
 
+# ============= WHATSAPP FUNCTIONS =============
+
+async def send_whatsapp_message(phone_number: str, message: str) -> bool:
+    """Send WhatsApp message via Twilio"""
+    try:
+        if not twilio_client:
+            logging.error("Twilio client not initialized")
+            return False
+        
+        # Ensure phone number is in WhatsApp format
+        if not phone_number.startswith("whatsapp:"):
+            phone_number = f"whatsapp:{phone_number}"
+        
+        message = twilio_client.messages.create(
+            body=message,
+            from_=TWILIO_WHATSAPP_NUMBER,
+            to=phone_number
+        )
+        
+        logging.info(f"WhatsApp message sent to {phone_number}: {message.sid}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"WhatsApp message error: {e}")
+        return False
+
+async def process_whatsapp_message(phone_number: str, message_text: str) -> str:
+    """Process incoming WhatsApp message and generate AI response"""
+    try:
+        # Clean phone number
+        clean_phone = phone_number.replace("whatsapp:", "")
+        
+        # Check if user is registered
+        whatsapp_user = await db.whatsapp_users.find_one({"phone_number": clean_phone})
+        
+        # Handle commands
+        message_lower = message_text.lower().strip()
+        
+        # Registration process
+        if not whatsapp_user or not whatsapp_user.get("registered", False):
+            if message_lower.startswith("register"):
+                return """🎓 Welcome to EduAgent WhatsApp AI Tutor!
+
+To complete registration, please send your details in this format:
+REGISTER [Your Name] [Your Email] [Student ID (optional)]
+
+Example: 
+REGISTER John Smith john@email.com
+
+After registration, you can:
+📚 Ask questions: Just type your question
+🎯 Generate quiz: Type "quiz [subject] [topic]"  
+📊 Get report: Type "report"
+
+Start by sending your registration details!"""
+            
+            elif message_lower.startswith("register "):
+                # Process registration
+                parts = message_text.split(" ", 3)
+                if len(parts) >= 3:
+                    name = parts[1]
+                    email = parts[2]
+                    student_id = parts[3] if len(parts) > 3 else None
+                    
+                    # Find student by email if no ID provided
+                    if not student_id:
+                        student = await db.users.find_one({"email": email, "role": "student"})
+                        if student:
+                            student_id = student["id"]
+                    
+                    # Create or update WhatsApp user
+                    whatsapp_user_data = WhatsAppUser(
+                        phone_number=clean_phone,
+                        student_id=student_id,
+                        name=name,
+                        registered=True
+                    )
+                    
+                    await db.whatsapp_users.replace_one(
+                        {"phone_number": clean_phone},
+                        whatsapp_user_data.dict(),
+                        upsert=True
+                    )
+                    
+                    return f"""✅ Registration successful!
+
+Welcome {name}! 🎉
+
+You can now:
+📚 **Ask Questions**: Just type any academic question
+🎯 **Generate Quiz**: Type "quiz [subject] [topic] [difficulty]"
+📊 **Get Report**: Type "report" for your progress
+💡 **Study Help**: Ask for explanations, examples, or help with homework
+
+Try asking: "What is photosynthesis?" or "quiz math algebra medium"
+
+Happy learning! 🚀"""
+                else:
+                    return "❌ Registration format incorrect. Use: REGISTER [Name] [Email] [Student ID (optional)]"
+            else:
+                return """👋 Hello! I'm EduAgent AI Tutor.
+
+Please register first by sending:
+REGISTER [Your Name] [Your Email]
+
+Example: REGISTER John Smith john@email.com"""
+        
+        # User is registered - process commands
+        student_id = whatsapp_user.get("student_id")
+        
+        # Quiz generation command
+        if message_lower.startswith("quiz "):
+            parts = message_text.split(" ", 4)
+            if len(parts) >= 3:
+                subject = parts[1].title()
+                topic = parts[2]
+                difficulty = parts[3] if len(parts) > 3 else "medium"
+                
+                # Generate quiz
+                quiz_request = DynamicQuizRequest(
+                    subject=subject,
+                    topic=topic,
+                    difficulty=difficulty,
+                    num_questions=5  # Shorter quiz for WhatsApp
+                )
+                
+                quiz_data = await generate_dynamic_quiz(quiz_request)
+                
+                # Format quiz for WhatsApp
+                quiz_text = f"🎯 **{quiz_data['quiz_title']}**\n"
+                quiz_text += f"📚 Subject: {subject} | 📊 Difficulty: {difficulty}\n\n"
+                
+                for i, q in enumerate(quiz_data['questions'][:3], 1):  # Show only first 3 questions
+                    quiz_text += f"**Q{i}:** {q['question']}\n"
+                    for opt, text in q['options'].items():
+                        quiz_text += f"{opt}) {text}\n"
+                    quiz_text += "\n"
+                
+                quiz_text += "📱 Complete the full quiz on the EduAgent web platform for detailed analysis and email report!\n\n"
+                quiz_text += f"🔗 Login at: learnmate-ai-12.preview.emergentagent.com"
+                
+                return quiz_text
+            else:
+                return "❌ Quiz format: quiz [subject] [topic] [difficulty]\nExample: quiz math algebra medium"
+        
+        # Report command
+        elif message_lower in ["report", "progress"]:
+            if student_id:
+                try:
+                    # Get recent quiz attempts
+                    attempts = await db.quiz_evaluations.find({"student_id": student_id}).sort("created_at", -1).to_list(5)
+                    
+                    if attempts:
+                        report = "📊 **Your Recent Progress**\n\n"
+                        for attempt in attempts[:3]:
+                            quiz_title = attempt.get("quiz_data", {}).get("quiz_title", "Quiz")
+                            percentage = attempt.get("percentage", 0)
+                            emoji = "🟢" if percentage >= 70 else "🟡" if percentage >= 50 else "🔴"
+                            report += f"{emoji} {quiz_title}: {percentage:.1f}%\n"
+                        
+                        report += f"\n📈 **Latest Performance**: {attempts[0]['percentage']:.1f}%\n"
+                        report += "🎯 Keep practicing to improve!\n\n"
+                        report += "📧 Check your email for detailed reports after each quiz."
+                        return report
+                    else:
+                        return "📊 No quiz attempts found yet.\n\nTake a quiz to see your progress!\nType: quiz [subject] [topic]"
+                except Exception as e:
+                    return "❌ Couldn't fetch your progress right now. Try again later."
+            else:
+                return "❌ Please complete registration to view reports."
+        
+        # Help command
+        elif message_lower in ["help", "commands"]:
+            return """🤖 **EduAgent WhatsApp Commands**
+
+📚 **Ask Questions**: Just type any question
+   Example: "What is photosynthesis?"
+
+🎯 **Generate Quiz**: quiz [subject] [topic] [difficulty]
+   Example: "quiz math algebra medium"
+
+📊 **View Progress**: "report" or "progress"
+
+💡 **Tips**:
+   • Ask specific questions for better answers
+   • Use the web platform for detailed features
+   • Check email for quiz reports
+
+🔗 Web Platform: learnmate-ai-12.preview.emergentagent.com
+
+Just ask anything! 🚀"""
+        
+        # Regular question - use RAG system + Gemini
+        else:
+            # Query the RAG system
+            answer = await query_rag_system(
+                question=message_text,
+                include_teacher_materials=True
+            )
+            
+            # Format for WhatsApp (limit length)
+            if len(answer) > 1500:
+                answer = answer[:1500] + "...\n\n📱 Login to the web platform for complete answers!"
+            
+            return f"🤖 **AI Tutor Answer**:\n\n{answer}\n\n💡 Need more help? Just ask another question!"
+    
+    except Exception as e:
+        logging.error(f"WhatsApp message processing error: {e}")
+        return "❌ Sorry, I'm having trouble right now. Please try again later or use the web platform."
+
 @api_router.get("/my-subscription")
 async def get_my_subscription(current_user: User = Depends(get_current_user)):
     """Get current user's subscription"""
