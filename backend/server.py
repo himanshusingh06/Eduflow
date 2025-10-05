@@ -360,6 +360,45 @@ class QuizAnalysis(BaseModel):
     performance_trend: str  # improving, declining, stable
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+# Dynamic Quiz Models
+class DynamicQuizRequest(BaseModel):
+    subject: str
+    topic: str
+    difficulty: str  # easy, medium, hard
+    num_questions: int = Field(ge=5, le=10)  # Between 5 and 10 questions
+    grade_level: Optional[str] = "Grade 8"
+
+class QuizEvaluation(BaseModel):
+    student_id: str
+    quiz_data: Dict[str, Any]
+    student_answers: Dict[str, Any]
+    score: int
+    total_questions: int
+    percentage: float
+    evaluation_report: str
+    recommendations: List[str]
+    strengths: List[str]
+    weaknesses: List[str]
+
+# Email Models
+class EmailReport(BaseModel):
+    recipient_email: str
+    student_name: str
+    quiz_title: str
+    score: int
+    total_questions: int
+    percentage: float
+    evaluation_report: str
+    recommendations: List[str]
+
+# Student PDF Upload Model  
+class StudentPDFUpload(BaseModel):
+    student_id: str
+    filename: str
+    original_filename: str
+    file_size: int
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
 # ============= UTILITY FUNCTIONS =============
 
 def hash_password(password: str) -> str:
