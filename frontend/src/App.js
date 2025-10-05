@@ -3479,6 +3479,8 @@ const Dashboard = () => {
         return <StudentPDFManager />;
       case 'upload-materials':
         return <FileUpload />;
+      case 'whatsapp':
+        return <WhatsAppMonitor />;
       case 'chat':
         return <div className="p-6">Messages - Coming Soon (WhatsApp Integration)</div>;
       default:
