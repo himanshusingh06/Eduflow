@@ -2121,7 +2121,7 @@ async def upload_study_material(
         pages_text = await extract_text_from_pdf(file_content)
         
         if pages_text:
-            success = await create_rag_embeddings(study_material.id, pages_text)
+            success = await create_rag_embeddings(study_material.id, pages_text, "teacher")
             if success:
                 await db.study_materials.update_one(
                     {"id": study_material.id},
