@@ -111,7 +111,7 @@ google-generativeai
 PyPDF2
 sentence-transformers
 chromadb
-pinecone-client
+pinecone
 email-validator
 twilio
 tenacity==9.1.2
