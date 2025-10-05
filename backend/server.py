@@ -2368,6 +2368,10 @@ async def submit_dynamic_quiz(
         if not quiz_record:
             raise HTTPException(status_code=404, detail="Quiz not found")
         
+        # Clean ObjectId from quiz record
+        if "_id" in quiz_record:
+            del quiz_record["_id"]
+        
         # Evaluate with Gemini AI
         evaluation = await evaluate_quiz_with_gemini(
             quiz_record, 
