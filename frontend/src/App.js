@@ -2,6 +2,7 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
+import edumatelogo from "./assets/edumale_logo.jpg" 
 import { User, BookOpen, GraduationCap, MessageSquare, BarChart3, Settings, LogOut, Brain, Users, PenTool, Menu, X, Upload } from 'lucide-react';
 import './App.css';
 
@@ -91,10 +92,14 @@ const Login = () => {
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md backdrop-blur-sm bg-opacity-95">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Brain className="w-8 h-8 text-white" />
+          <div className="w-364 h-20 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center mx-auto mb-4 overflow-hidden">
+            <img
+              src={edumatelogo}
+              alt="Logo"
+              className="object-cover w-full h-full scale-140 rounded-md"
+            />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">EduAgent</h1>
+
           <p className="text-gray-600">AI-Powered Learning Platform</p>
         </div>
 
@@ -234,13 +239,16 @@ const Sidebar = ({ activeTab, setActiveTab, user, isMobileOpen, setIsMobileOpen 
         <div className="p-6 border-b">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
-                <Brain className="w-6 h-6 text-white" />
+              <div className="w-36 h-20 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl mx-auto mb-4 overflow-hidden">
+                <img
+                  src={edumatelogo}
+                  alt="Logo"
+                  className="object-cover w-full h-full scale-140 rounded-md"
+                />
               </div>
-              <div>
-                <h2 className="font-bold text-lg">EduAgent</h2>
+              
                 <p className="text-sm text-gray-600 capitalize">{user?.role}</p>
-              </div>
+              
             </div>
             <button 
               onClick={() => setIsMobileOpen(false)}
@@ -656,7 +664,7 @@ const StudyContent = () => {
           key: response.data.key_id,
           amount: response.data.amount,
           currency: response.data.currency,
-          name: 'EduAgent - Learning Platform',
+          name: 'EduMate - Learning Platform',
           description: `Course: ${courseItem.title}`,
           order_id: response.data.order_id,
           handler: async function (razorpayResponse) {
@@ -1704,7 +1712,7 @@ const SubscriptionManagement = () => {
           key: response.data.key_id,
           amount: response.data.amount,
           currency: response.data.currency,
-          name: 'EduAgent - Learning Platform',
+          name: 'EduMate - Learning Platform',
           description: 'Monthly Premium Subscription',
           order_id: response.data.order_id,
           handler: async function (razorpayResponse) {
@@ -3701,7 +3709,7 @@ const Dashboard = () => {
             >
               <Menu className="w-6 h-6" />
             </button>
-            <h1 className="font-semibold">EduAgent</h1>
+            <h1 className="font-semibold">EduMate</h1>
             <div className="w-10" /> {/* Spacer */}
           </div>
         </div>
@@ -3721,7 +3729,7 @@ const Loading = () => (
       <div className="w-16 h-16 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-pulse">
         <Brain className="w-8 h-8 text-white" />
       </div>
-      <p className="text-gray-600">Loading EduAgent...</p>
+      <p className="text-gray-600">Loading EduMate...</p>
     </div>
   </div>
 );
