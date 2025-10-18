@@ -1119,50 +1119,85 @@ async def get_conversations(
     return [ChatMessage(**msg) for msg in messages]
 
 # ============= DASHBOARD ROUTES =============
+from bson import ObjectId
+
+def fix_objectids(obj):
+    """Recursively convert ObjectId to str in MongoDB documents."""
+    if isinstance(obj, list):
+        return [fix_objectids(item) for item in obj]
+    elif isinstance(obj, dict):
+        new_obj = {}
+        for k, v in obj.items():
+            if isinstance(v, ObjectId):
+                new_obj[k] = str(v)
+            else:
+                new_obj[k] = fix_objectids(v)
+        return new_obj
+    else:
+        return obj
 
 @api_router.get("/dashboard/student")
 async def get_student_dashboard(current_user: User = Depends(get_current_user)):
     if current_user.role != "student":
         raise HTTPException(status_code=403, detail="Student access required")
-    
-    # Get recent activities
-    recent_quizzes = await db.quiz_attempts.find({"student_id": current_user.id}).sort("completed_at", -1).to_list(5)
-    recent_questions = await db.questions.find({"student_id": current_user.id}).sort("created_at", -1).to_list(5)
-    
-    # Get available content
-    available_content = await db.study_content.find({}).sort("created_at", -1).to_list(10)
-    available_quizzes = await db.quizzes.find({}).sort("created_at", -1).to_list(10)
-    
+
+    # Fetch and convert data
+    recent_quizzes = fix_objectids(
+        await db.quiz_attempts.find({"student_id": current_user.id})
+        .sort("completed_at", -1)
+        .to_list(5)
+    )
+
+    recent_questions = fix_objectids(
+        await db.questions.find({"student_id": current_user.id})
+        .sort("created_at", -1)
+        .to_list(5)
+    )
+
+    available_content = fix_objectids(
+        await db.study_content.find({}).sort("created_at", -1).to_list(10)
+    )
+
+    available_quizzes = fix_objectids(
+        await db.quizzes.find({}).sort("created_at", -1).to_list(10)
+    )
+
+    quick_stats = {
+        "total_quizzes_taken": len(
+            await db.quiz_attempts.find({"student_id": current_user.id}).to_list(1000)
+        ),
+        "questions_asked": len(
+            await db.questions.find({"student_id": current_user.id}).to_list(1000)
+        )
+    }
+
     return {
-        "user": current_user,
+        "user": fix_objectids(current_user.dict() if hasattr(current_user, "dict") else current_user),
         "recent_quiz_attempts": recent_quizzes,
         "recent_questions": recent_questions,
         "available_content": available_content,
         "available_quizzes": available_quizzes,
-        "quick_stats": {
-            "total_quizzes_taken": len(await db.quiz_attempts.find({"student_id": current_user.id}).to_list(1000)),
-            "questions_asked": len(await db.questions.find({"student_id": current_user.id}).to_list(1000))
-        }
+        "quick_stats": quick_stats
     }
 
 @api_router.get("/dashboard/teacher")
 async def get_teacher_dashboard(current_user: User = Depends(get_current_user)):
     if current_user.role != "teacher":
         raise HTTPException(status_code=403, detail="Teacher access required")
-    
+
     # Get created content
     my_content = await db.study_content.find({"created_by": current_user.id}).sort("created_at", -1).to_list(100)
     my_quizzes = await db.quizzes.find({"created_by": current_user.id}).sort("created_at", -1).to_list(100)
-    
+
     # Get student activities on my content
-    my_quiz_ids = [quiz["id"] for quiz in my_quizzes]
+    my_quiz_ids = [quiz["_id"] for quiz in my_quizzes]  # ✅ use "_id", not "id"
     quiz_attempts = await db.quiz_attempts.find({"quiz_id": {"$in": my_quiz_ids}}).sort("completed_at", -1).to_list(100)
-    
-    return {
-        "user": current_user,
-        "my_content": my_content,
-        "my_quizzes": my_quizzes,
-        "recent_quiz_attempts": quiz_attempts,
+
+    result = {
+        "user": fix_objectids(current_user.dict() if hasattr(current_user, "dict") else current_user),
+        "my_content": fix_objectids(my_content),
+        "my_quizzes": fix_objectids(my_quizzes),
+        "recent_quiz_attempts": fix_objectids(quiz_attempts),
         "stats": {
             "total_content_created": len(my_content),
             "total_quizzes_created": len(my_quizzes),
@@ -1170,25 +1205,30 @@ async def get_teacher_dashboard(current_user: User = Depends(get_current_user)):
         }
     }
 
+    return fix_objectids(result)
+
 @api_router.get("/dashboard/parent")
 async def get_parent_dashboard(current_user: User = Depends(get_current_user)):
     if current_user.role != "parent":
         raise HTTPException(status_code=403, detail="Parent access required")
     
-    # Get linked students (simplified - in real app, would have proper linking)
-    students = await db.users.find({"role": "student"}).to_list(100)  # TODO: Add proper parent-child linking
-    
-    # Get progress for all students (simplified)
+    students = await db.users.find({"role": "student"}).to_list(100)
+    students = [fix_objectids(s) for s in students]
+
     student_progress = []
-    for student in students[:5]:  # Limit for demo
-        progress = await get_student_progress(student["id"], current_user)
-        student_progress.append({"student": student, "progress": progress})
-    
+    for student in students[:5]:
+        progress = await get_student_progress(student["_id"], current_user)
+        student_progress.append({
+            "student": student,
+            "progress": progress
+        })
+
     return {
-        "user": current_user,
-        "students": students[:5],  # Demo data
+        "user": fix_objectids(current_user.dict() if hasattr(current_user, "dict") else current_user),
+        "students": students[:5],
         "student_progress": student_progress
     }
+
 
 # ============= PAYMENT ROUTES =============
 
@@ -1714,68 +1754,145 @@ async def create_rag_embeddings(material_id: str, pages_text: List[str], upload_
         logging.error(f"RAG embedding error: {e}")
         return False
 
-async def query_rag_system(question: str, subject: str = None, grade_level: str = None, material_filter: str = None, include_teacher_materials: bool = True) -> str:
-    """Query RAG system using Pinecone for course-related answers"""
+async def query_rag_system(
+    question: str,
+    subject: str = None,
+    grade_level: str = None,
+    material_filter: str = None,
+    include_teacher_materials: bool = True,
+    debug: bool = False,          # set True temporarily to get verbose prints
+    include_values_for_debug: bool = False,  # set True to inspect stored vector lengths
+    score_threshold: float = 0.3  # relaxed threshold
+) -> str:
+    """Query RAG system using Pinecone for course-related answers.
+       Debug-friendly: set debug=True to print diagnostic info.
+    """
     try:
         if not pinecone_index:
             return "RAG system not available. Please contact administrator."
         
-        # Generate query embedding
-        query_embedding = sentence_model.encode(question).tolist()
+        # --- 1) create query embedding and normalize it ---
+        raw_q_emb = sentence_model.encode(question)
+        # guard
+        if raw_q_emb is None:
+            if debug: print("❌ sentence_model returned None for query embedding")
+            return "Failed to create query embedding."
         
-        # Build filter for materials
-        filter_dict = {}
+        # convert to numpy and normalize (good for cosine sim)
+        import numpy as np
+        q_vec = np.array(raw_q_emb, dtype=float)
+        norm = np.linalg.norm(q_vec)
+        if norm == 0 or np.isnan(norm):
+            if debug: print("❌ query embedding has zero or NaN norm:", norm)
+            return "Failed to create a usable query embedding."
+        q_vec = (q_vec / norm).tolist()
+        
+        if debug:
+            print("🔷 QUERY EMBEDDING len:", len(q_vec))
+            print("🔷 QUERY EMBEDDING sample:", q_vec[:6])
+        
+        # --- 2) prepare filter safely ---
+        filter_dict = None
         if material_filter:
-            # Specific material requested
-            filter_dict["material_id"] = material_filter
+            # exact match on the metadata key you used during upsert
+            filter_dict = {"material_id": {"$eq": material_filter}}
         elif include_teacher_materials:
-            # Include both teacher and student materials
             filter_dict = {"upload_type": {"$in": ["teacher", "student"]}}
+        # else leave None (no filter)
         
-        # Search in Pinecone
-        results = pinecone_index.query(
-            vector=query_embedding,
-            top_k=8,  # Get more results for better context
-            include_metadata=True,
-            filter=filter_dict if filter_dict else None
+        if debug:
+            print("🔍 FILTER:", filter_dict)
+        
+        # --- 3) Query Pinecone (temporarily include values if debugging) ---
+        query_kwargs = dict(
+            vector=q_vec,
+            top_k=8,
+            include_metadata=True
         )
+        if filter_dict:
+            query_kwargs['filter'] = filter_dict
+        if include_values_for_debug:
+            query_kwargs['include_values'] = True
         
-        if not results.matches:
-            return "I couldn't find relevant information in the uploaded materials. Please ask your teacher to upload course materials or upload your own study documents."
+        results = pinecone_index.query(**query_kwargs)
         
-        # Extract relevant text from results with lower threshold for broader search
+        # Defensive: results may be None or have no matches
+        matches = getattr(results, "matches", None) or results.get("matches") if isinstance(results, dict) else results.matches if results else []
+        if debug:
+            print("📦 matches found:", len(matches))
+            # print each match's score + metadata summary
+            for i, m in enumerate(matches):
+                score = getattr(m, "score", None) or (m.get("score") if isinstance(m, dict) else None)
+                meta = getattr(m, "metadata", None) or (m.get("metadata") if isinstance(m, dict) else None)
+                values_len = getattr(m, "values", None)
+                if values_len is not None:
+                    try:
+                        values_len = len(values_len)
+                    except Exception:
+                        values_len = "n/a"
+                else:
+                    values_len = "not included"
+                print(f"  match[{i}] score={score} values_len={values_len} meta_keys={list(meta.keys()) if meta else None}")
+        
+        if not matches:
+            # nothing found — provide informative message (and debug hints)
+            msg = "I couldn't find relevant information in the uploaded materials."
+            if debug:
+                msg += " Debug hints: check index dimension, ensure embeddings were upserted as numeric lists, verify metadata keys and namespaces."
+            return msg
+        
+        # --- 4) Build contexts: accept by score OR fallback to top-k ---
         contexts = []
         sources = []
-        for match in results.matches:
-            if match.score > 0.6:  # Lowered threshold for more inclusive results
-                full_text = match.metadata.get('full_text', match.metadata.get('text', ''))
+        # first try collecting by threshold
+        for m in matches:
+            score = getattr(m, "score", None) or (m.get("score") if isinstance(m, dict) else None) or 0.0
+            meta = getattr(m, "metadata", None) or (m.get("metadata") if isinstance(m, dict) else {})
+            full_text = None
+            # prefer 'full_text', then 'text' then 'content'
+            for key in ("full_text", "text", "content"):
+                if isinstance(meta, dict) and meta.get(key):
+                    full_text = meta.get(key)
+                    break
+            if score >= score_threshold and full_text:
+                contexts.append(full_text)
+                sources.append(meta.get("upload_type", "unknown"))
+        
+        # if nothing passed threshold, fallback to top-k matches that have any text
+        if not contexts:
+            if debug: print("⚠️ No matches passed threshold; falling back to top-k matches")
+            for m in matches[:6]:  # fallback: top 6
+                meta = getattr(m, "metadata", None) or (m.get("metadata") if isinstance(m, dict) else {})
+                full_text = None
+                for key in ("full_text", "text", "content"):
+                    if isinstance(meta, dict) and meta.get(key):
+                        full_text = meta.get(key)
+                        break
                 if full_text:
                     contexts.append(full_text)
-                    source_type = match.metadata.get('upload_type', 'unknown')
-                    sources.append(f"{source_type} material")
+                    sources.append(meta.get("upload_type", "unknown"))
+                if len(contexts) >= 6:
+                    break
         
         if not contexts:
-            # If no high-confidence matches, try with general AI knowledge
+            # final fallback -> general AI answer
             model = genai.GenerativeModel('gemini-2.5-flash')
             prompt = f"""As an AI tutor, answer this student's question about {subject or 'academics'}:
 
 Question: {question}
 
 Provide a clear, educational answer appropriate for {grade_level or 'general'} level. Since no specific course materials were found, provide general knowledge and suggest the student ask their teacher for more specific information."""
-
             response = model.generate_content(prompt)
             return f"📚 **General AI Answer** (No specific course materials found):\n\n{response.text}\n\n💡 *Tip: Ask your teacher to upload course materials for more specific answers!*"
         
-        # Use Gemini to generate answer based on retrieved context
+        # --- 5) Generate final answer with LLM using the collected contexts ---
         model = genai.GenerativeModel('gemini-2.5-flash')
-        
-        context = "\n\n".join(contexts[:4])  # Use top 4 results for richer context
-        sources_text = ", ".join(set(sources[:3]))
-        
-        prompt = f"""Based on the following course materials, answer the student's question comprehensively:
+        context_text = "\n\n".join(contexts[:6])  # combine up to 6 chunks
+        sources_text = ", ".join(sorted(set(sources))[:3])
+        llm_prompt = f"""Based on the following course materials, answer the student's question comprehensively:
 
 Course Materials Context:
-{context}
+{context_text}
 
 Student Question: {question}
 
@@ -1787,12 +1904,12 @@ Instructions:
 5. Include examples when helpful
 
 Answer:"""
-
-        response = model.generate_content(prompt)
+        response = model.generate_content(llm_prompt)
         return f"📖 **Answer from Course Materials** (Sources: {sources_text}):\n\n{response.text}"
-        
+    
     except Exception as e:
-        logging.error(f"RAG query error: {e}")
+        logging.exception("RAG query error:")
+        # Provide a plain message to client (not entire stack)
         return "I'm having trouble accessing the course materials right now. Please try again later."
 
 async def summarize_notes(note_content: str, summary_type: str = "brief") -> str:
@@ -2426,11 +2543,13 @@ async def get_teacher_materials(current_user: User = Depends(get_current_user)):
     
     try:
         materials = await db.study_materials.find({"uploaded_by": current_user.id}).to_list(100)
+        materials = [fix_objectids(m) for m in materials]  # 👈 convert ObjectIds
         return {"materials": materials}
         
     except Exception as e:
         logging.error(f"Get materials error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # ============= RAG SYSTEM ROUTES =============
 
@@ -3221,7 +3340,7 @@ async def get_linked_students(current_user: User = Depends(get_current_user)):
 
 @api_router.get("/")
 async def root():
-    return {"message": "EduAgent API - AI Powered Educational Platform with Payment Gateway"}
+    return {"message": "EduMate API - AI Powered Educational Platform with Payment Gateway"}
 
 @api_router.get("/subjects")
 async def get_subjects():

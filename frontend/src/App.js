@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
 import edumatelogo from "./assets/edumale_logo.jpg" 
-import { User, BookOpen, GraduationCap, MessageSquare, BarChart3, Settings, LogOut, Brain, Users, PenTool, Menu, X, Upload } from 'lucide-react';
+import { User, BookOpen, GraduationCap, MessageSquare, BarChart3,MessageCircle, Settings, LogOut, Brain, Users, PenTool, Menu, X, Upload } from 'lucide-react';
 import './App.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -233,24 +233,24 @@ const Sidebar = ({ activeTab, setActiveTab, user, isMobileOpen, setIsMobileOpen 
       {/* Sidebar */}
       <div className={`
         fixed left-0 top-0 h-full bg-white shadow-xl z-50 w-64 transform transition-transform duration-300
+        overflow-y-auto
         lg:relative lg:translate-x-0 lg:z-0
         ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="p-6 border-b">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-36 h-20 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl mx-auto mb-4 overflow-hidden">
+            <div className="flex flex-col items-center space-y-2">
+              <div className="w-36 h-20 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl mx-auto mb-2 overflow-hidden">
                 <img
                   src={edumatelogo}
                   alt="Logo"
                   className="object-cover w-full h-full scale-140 rounded-md"
                 />
               </div>
-              
-                <p className="text-sm text-gray-600 capitalize">{user?.role}</p>
-              
+              <p className="text-sm text-gray-600 capitalize text-center">{user?.role}</p>
             </div>
-            <button 
+
+            <button
               onClick={() => setIsMobileOpen(false)}
               className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"
             >
