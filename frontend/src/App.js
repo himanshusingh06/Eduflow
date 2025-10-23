@@ -2,7 +2,8 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
-import { User, BookOpen, GraduationCap, MessageSquare, BarChart3, Settings, LogOut, Brain, Users, PenTool, Menu, X, Upload } from 'lucide-react';
+import edumatelogo from "./assets/edumale_logo.jpg" 
+import { User, BookOpen, GraduationCap, MessageSquare, BarChart3,MessageCircle, Settings, LogOut, Brain, Users, PenTool, Menu, X, Upload } from 'lucide-react';
 import './App.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -91,10 +92,14 @@ const Login = () => {
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md backdrop-blur-sm bg-opacity-95">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Brain className="w-8 h-8 text-white" />
+          <div className="w-364 h-20 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center mx-auto mb-4 overflow-hidden">
+            <img
+              src={edumatelogo}
+              alt="Logo"
+              className="object-cover w-full h-full scale-140 rounded-md"
+            />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">EduAgent</h1>
+
           <p className="text-gray-600">AI-Powered Learning Platform</p>
         </div>
 
@@ -182,8 +187,10 @@ const Sidebar = ({ activeTab, setActiveTab, user, isMobileOpen, setIsMobileOpen 
         { id: 'profile', label: 'My Profile', icon: User },
         { id: 'study', label: 'Study Content', icon: BookOpen },
         { id: 'quiz', label: 'Quizzes', icon: PenTool },
+        { id: 'dynamic-quiz', label: 'Custom Quiz', icon: Brain },
         { id: 'ask', label: 'Ask AI', icon: Brain },
         { id: 'notes', label: 'My Notes', icon: BookOpen },
+        { id: 'my-pdfs', label: 'My PDFs', icon: Upload },
         { id: 'learning-path', label: 'Learning Path', icon: Brain },
         { id: 'subscription', label: 'Subscription', icon: GraduationCap },
       ];
@@ -195,6 +202,7 @@ const Sidebar = ({ activeTab, setActiveTab, user, isMobileOpen, setIsMobileOpen 
         { id: 'create-content', label: 'Create Content', icon: BookOpen },
         { id: 'create-quiz', label: 'Create Quiz', icon: PenTool },
         { id: 'upload-materials', label: 'Upload Materials', icon: Upload },
+        { id: 'whatsapp', label: 'WhatsApp Monitor', icon: MessageCircle },
         { id: 'students', label: 'Students', icon: Users },
       ];
     }
@@ -225,21 +233,24 @@ const Sidebar = ({ activeTab, setActiveTab, user, isMobileOpen, setIsMobileOpen 
       {/* Sidebar */}
       <div className={`
         fixed left-0 top-0 h-full bg-white shadow-xl z-50 w-64 transform transition-transform duration-300
+        overflow-y-auto
         lg:relative lg:translate-x-0 lg:z-0
         ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="p-6 border-b">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
-                <Brain className="w-6 h-6 text-white" />
+            <div className="flex flex-col items-center space-y-2">
+              <div className="w-36 h-20 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl mx-auto mb-2 overflow-hidden">
+                <img
+                  src={edumatelogo}
+                  alt="Logo"
+                  className="object-cover w-full h-full scale-140 rounded-md"
+                />
               </div>
-              <div>
-                <h2 className="font-bold text-lg">EduAgent</h2>
-                <p className="text-sm text-gray-600 capitalize">{user?.role}</p>
-              </div>
+              <p className="text-sm text-gray-600 capitalize text-center">{user?.role}</p>
             </div>
-            <button 
+
+            <button
               onClick={() => setIsMobileOpen(false)}
               className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"
             >
@@ -653,7 +664,7 @@ const StudyContent = () => {
           key: response.data.key_id,
           amount: response.data.amount,
           currency: response.data.currency,
-          name: 'EduAgent - Learning Platform',
+          name: 'EduMate - Learning Platform',
           description: `Course: ${courseItem.title}`,
           order_id: response.data.order_id,
           handler: async function (razorpayResponse) {
@@ -1056,6 +1067,396 @@ const QuizSystem = () => {
   );
 };
 
+// Dynamic Quiz Component
+const DynamicQuiz = () => {
+  const [step, setStep] = useState('create'); // 'create', 'taking', 'result'
+  const [quizRequest, setQuizRequest] = useState({
+    subject: 'Mathematics',
+    topic: '',
+    difficulty: 'medium',
+    num_questions: 5,
+    grade_level: 'Grade 8'
+  });
+  const [generatedQuiz, setGeneratedQuiz] = useState(null);
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [studentAnswers, setStudentAnswers] = useState({});
+  const [evaluation, setEvaluation] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [myAttempts, setMyAttempts] = useState([]);
+
+  useEffect(() => {
+    fetchMyAttempts();
+  }, []);
+
+  const fetchMyAttempts = async () => {
+    try {
+      const response = await axios.get('/quiz/my-dynamic-attempts');
+      setMyAttempts(response.data.evaluations || []);
+    } catch (error) {
+      console.error('Failed to load attempts:', error);
+    }
+  };
+
+  const generateQuiz = async () => {
+    if (!quizRequest.topic.trim()) {
+      toast.error('Please enter a topic for the quiz');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await axios.post('/quiz/generate-dynamic', quizRequest);
+      setGeneratedQuiz(response.data.quiz);
+      setStep('taking');
+      setCurrentQuestion(0);
+      setStudentAnswers({});
+      toast.success('Quiz generated successfully!');
+    } catch (error) {
+      console.error('Quiz generation error:', error);
+      toast.error('Failed to generate quiz');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectAnswer = (questionNumber, answer) => {
+    setStudentAnswers({
+      ...studentAnswers,
+      [questionNumber]: answer
+    });
+  };
+
+  const submitQuiz = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.post(`/quiz/submit-dynamic/${generatedQuiz.id}`, studentAnswers);
+      setEvaluation(response.data.evaluation);
+      setStep('result');
+      
+      if (response.data.email_sent) {
+        toast.success('Quiz submitted! Check your email for detailed report.');
+      } else {
+        toast.success('Quiz submitted successfully!');
+      }
+      
+      fetchMyAttempts(); // Refresh attempts list
+    } catch (error) {
+      console.error('Quiz submission error:', error);
+      toast.error('Failed to submit quiz');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startNewQuiz = () => {
+    setStep('create');
+    setQuizRequest({
+      subject: 'Mathematics',
+      topic: '',
+      difficulty: 'medium',
+      num_questions: 5,
+      grade_level: 'Grade 8'
+    });
+    setGeneratedQuiz(null);
+    setCurrentQuestion(0);
+    setStudentAnswers({});
+    setEvaluation(null);
+  };
+
+  // Quiz Creation Step
+  if (step === 'create') {
+    return (
+      <div className="p-6 space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Custom Quiz</h1>
+          <p className="text-gray-600">Generate personalized quizzes with AI based on any topic you want to study</p>
+        </div>
+
+        {/* Quiz Configuration */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Quiz Configuration</h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+              <select
+                value={quizRequest.subject}
+                onChange={(e) => setQuizRequest({...quizRequest, subject: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="Mathematics">Mathematics</option>
+                <option value="Science">Science</option>
+                <option value="English">English</option>
+                <option value="History">History</option>
+                <option value="Geography">Geography</option>
+                <option value="Physics">Physics</option>
+                <option value="Chemistry">Chemistry</option>
+                <option value="Biology">Biology</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
+              <select
+                value={quizRequest.grade_level}
+                onChange={(e) => setQuizRequest({...quizRequest, grade_level: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="Grade 6">Grade 6</option>
+                <option value="Grade 7">Grade 7</option>
+                <option value="Grade 8">Grade 8</option>
+                <option value="Grade 9">Grade 9</option>
+                <option value="Grade 10">Grade 10</option>
+                <option value="Grade 11">Grade 11</option>
+                <option value="Grade 12">Grade 12</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Difficulty Level</label>
+              <select
+                value={quizRequest.difficulty}
+                onChange={(e) => setQuizRequest({...quizRequest, difficulty: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Number of Questions</label>
+              <select
+                value={quizRequest.num_questions}
+                onChange={(e) => setQuizRequest({...quizRequest, num_questions: parseInt(e.target.value)})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value={5}>5 Questions</option>
+                <option value={6}>6 Questions</option>
+                <option value={7}>7 Questions</option>
+                <option value={8}>8 Questions</option>
+                <option value={9}>9 Questions</option>
+                <option value={10}>10 Questions</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Topic *</label>
+            <input
+              type="text"
+              value={quizRequest.topic}
+              onChange={(e) => setQuizRequest({...quizRequest, topic: e.target.value})}
+              placeholder="Enter the specific topic (e.g., 'Quadratic Equations', 'Cell Biology', 'World War II')"
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            />
+            <p className="text-sm text-gray-500 mt-1">Be specific! Example: Instead of 'Math', use 'Algebra - Linear Equations'</p>
+          </div>
+
+          <button
+            onClick={generateQuiz}
+            disabled={loading || !quizRequest.topic.trim()}
+            className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? 'Generating Quiz with AI...' : 'Generate Quiz'}
+          </button>
+        </div>
+
+        {/* Previous Attempts */}
+        {myAttempts.length > 0 && (
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Quiz Attempts</h3>
+            <div className="space-y-3">
+              {myAttempts.slice(0, 5).map((attempt, idx) => (
+                <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium">{attempt.quiz_data?.quiz_title || 'Custom Quiz'}</p>
+                    <p className="text-sm text-gray-600">
+                      {attempt.quiz_data?.subject} • {attempt.quiz_data?.difficulty}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className={`font-bold ${attempt.percentage >= 70 ? 'text-green-600' : 'text-red-600'}`}>
+                      {attempt.percentage?.toFixed(1)}%
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {new Date(attempt.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Quiz Taking Step
+  if (step === 'taking' && generatedQuiz) {
+    const question = generatedQuiz.questions[currentQuestion];
+    const progress = ((currentQuestion + 1) / generatedQuiz.questions.length) * 100;
+
+    return (
+      <div className="p-6 space-y-6">
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">{generatedQuiz.quiz_title}</h2>
+              <p className="text-gray-600">{generatedQuiz.subject} • {generatedQuiz.difficulty} • {generatedQuiz.grade_level}</p>
+            </div>
+            <button
+              onClick={startNewQuiz}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              ← Back to Create
+            </button>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="mb-6">
+            <div className="flex justify-between text-sm text-gray-600 mb-2">
+              <span>Question {currentQuestion + 1} of {generatedQuiz.questions.length}</span>
+              <span>{progress.toFixed(0)}% Complete</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-emerald-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              ></div>
+            </div>
+          </div>
+
+          {/* Question */}
+          <div className="mb-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">
+              {question.question_number}. {question.question}
+            </h3>
+            <div className="space-y-3">
+              {Object.entries(question.options).map(([optionKey, optionText]) => (
+                <label key={optionKey} className="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name={`question-${currentQuestion}`}
+                    value={optionKey}
+                    checked={studentAnswers[question.question_number] === optionKey}
+                    onChange={() => selectAnswer(question.question_number, optionKey)}
+                    className="mr-3"
+                  />
+                  <span className="font-medium mr-2">{optionKey}.</span>
+                  <span className="text-gray-800">{optionText}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Navigation */}
+          <div className="flex justify-between">
+            <button
+              onClick={() => setCurrentQuestion(currentQuestion - 1)}
+              disabled={currentQuestion === 0}
+              className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            
+            {currentQuestion === generatedQuiz.questions.length - 1 ? (
+              <button
+                onClick={submitQuiz}
+                disabled={loading}
+                className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50"
+              >
+                {loading ? 'Evaluating...' : 'Submit Quiz'}
+              </button>
+            ) : (
+              <button
+                onClick={() => setCurrentQuestion(currentQuestion + 1)}
+                className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+              >
+                Next
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Results Step
+  if (step === 'result' && evaluation) {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Quiz Results</h2>
+            <div className={`text-4xl font-bold mb-2 ${evaluation.percentage >= 70 ? 'text-green-600' : evaluation.percentage >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+              {evaluation.percentage?.toFixed(1)}%
+            </div>
+            <p className="text-gray-600">{evaluation.score} out of {evaluation.total_questions} correct</p>
+            <p className="text-lg font-medium mt-2">
+              {evaluation.percentage >= 90 ? '🎉 Excellent Work!' : 
+               evaluation.percentage >= 70 ? '👍 Good Job!' : 
+               evaluation.percentage >= 50 ? '📚 Keep Practicing!' : 
+               '💪 Don\'t Give Up!'}
+            </p>
+          </div>
+
+          {/* AI Evaluation */}
+          <div className="space-y-4">
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h4 className="font-medium text-blue-900 mb-2">📊 AI Evaluation Report</h4>
+              <p className="text-blue-800">{evaluation.evaluation_report}</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-green-50 p-4 rounded-lg">
+                <h4 className="font-medium text-green-900 mb-2">💪 Your Strengths</h4>
+                <ul className="text-green-800 space-y-1">
+                  {evaluation.strengths?.map((strength, idx) => (
+                    <li key={idx}>• {strength}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="bg-orange-50 p-4 rounded-lg">
+                <h4 className="font-medium text-orange-900 mb-2">📈 Areas to Improve</h4>
+                <ul className="text-orange-800 space-y-1">
+                  {evaluation.weaknesses?.map((weakness, idx) => (
+                    <li key={idx}>• {weakness}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="bg-purple-50 p-4 rounded-lg">
+              <h4 className="font-medium text-purple-900 mb-2">💡 Recommendations</h4>
+              <ul className="text-purple-800 space-y-1">
+                {evaluation.recommendations?.map((rec, idx) => (
+                  <li key={idx}>• {rec}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div className="flex space-x-4 mt-6">
+            <button
+              onClick={startNewQuiz}
+              className="flex-1 bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 transition-colors"
+            >
+              Create New Quiz
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return <div className="p-6">Loading...</div>;
+};
+
 // Ask AI Component
 const AskAI = () => {
   const [question, setQuestion] = useState('');
@@ -1073,7 +1474,9 @@ const AskAI = () => {
   const fetchAvailableMaterials = async () => {
     try {
       const response = await axios.get('/materials/available');
-      setAvailableMaterials(response.data.materials || []);
+      const teacherMaterials = response.data.teacher_materials || [];
+      const myPdfs = response.data.my_pdfs || [];
+      setAvailableMaterials([...teacherMaterials, ...myPdfs]);
     } catch (error) {
       console.error('Failed to load materials:', error);
     }
@@ -1137,16 +1540,21 @@ const AskAI = () => {
       {/* Available Materials Info */}
       {availableMaterials.length > 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <h3 className="font-medium text-blue-900 mb-2">Available Course Materials</h3>
+          <h3 className="font-medium text-blue-900 mb-2">📚 Available Study Materials ({availableMaterials.length})</h3>
           <div className="space-y-1">
-            {availableMaterials.slice(0, 3).map((material) => (
-              <p key={material.id} className="text-blue-700 text-sm">
-                📄 {material.original_filename} ({material.subject})
+            {availableMaterials.slice(0, 4).map((material, idx) => (
+              <p key={material.id || idx} className="text-blue-700 text-sm">
+                📄 {material.original_filename || material.filename} 
+                {material.subject && ` (${material.subject})`}
+                {material.student_id ? ' 👤 Your PDF' : ' 🎓 Course Material'}
               </p>
             ))}
-            {availableMaterials.length > 3 && (
-              <p className="text-blue-700 text-sm">+ {availableMaterials.length - 3} more materials</p>
+            {availableMaterials.length > 4 && (
+              <p className="text-blue-700 text-sm">+ {availableMaterials.length - 4} more materials available</p>
             )}
+          </div>
+          <div className="mt-2 text-xs text-blue-600">
+            💡 The AI can search through all these materials to answer your questions!
           </div>
         </div>
       )}
@@ -1304,7 +1712,7 @@ const SubscriptionManagement = () => {
           key: response.data.key_id,
           amount: response.data.amount,
           currency: response.data.currency,
-          name: 'EduAgent - Learning Platform',
+          name: 'EduMate - Learning Platform',
           description: 'Monthly Premium Subscription',
           order_id: response.data.order_id,
           handler: async function (razorpayResponse) {
@@ -2579,6 +2987,429 @@ const StudentProfile = () => {
   );
 };
 
+// Student PDF Manager Component
+const StudentPDFManager = () => {
+  const [pdfs, setPdfs] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [selectedPdf, setSelectedPdf] = useState(null);
+  const [question, setQuestion] = useState('');
+  const [askLoading, setAskLoading] = useState(false);
+  const [conversations, setConversations] = useState({});
+
+  useEffect(() => {
+    fetchMyPdfs();
+  }, []);
+
+  const fetchMyPdfs = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get('/student/my-pdfs');
+      setPdfs(response.data.pdfs || []);
+    } catch (error) {
+      toast.error('Failed to load PDFs');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      toast.error('Please upload only PDF files');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await axios.post('/student/upload-pdf', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      toast.success(`PDF uploaded! ${response.data.pages_processed} pages processed for Q&A.`);
+      fetchMyPdfs();
+      event.target.value = ''; // Reset file input
+    } catch (error) {
+      toast.error('Failed to upload PDF');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const askQuestion = async () => {
+    if (!question.trim() || !selectedPdf) return;
+
+    setAskLoading(true);
+    try {
+      // Extract material_id from the PDF (need to construct it)
+      const materialId = `student_${selectedPdf.student_id}_${selectedPdf.filename.split('_')[0]}`;
+      
+      const response = await axios.post('/student/ask-my-pdf', null, {
+        params: {
+          material_id: materialId,
+          question: question
+        }
+      });
+
+      // Add to conversation for this PDF
+      const pdfId = selectedPdf.filename;
+      setConversations(prev => ({
+        ...prev,
+        [pdfId]: [
+          ...(prev[pdfId] || []),
+          {
+            type: 'question',
+            text: question,
+            timestamp: new Date()
+          },
+          {
+            type: 'answer',
+            text: response.data.answer,
+            timestamp: new Date()
+          }
+        ]
+      }));
+
+      setQuestion('');
+      toast.success('Question answered based on your PDF!');
+    } catch (error) {
+      toast.error('Failed to get answer from PDF');
+    } finally {
+      setAskLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">My PDF Documents</h1>
+        <p className="text-gray-600">Upload your own PDFs and ask questions about them</p>
+      </div>
+
+      {/* Upload Section */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload New PDF</h3>
+        
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Choose PDF File (Study materials, notes, textbooks, etc.)
+          </label>
+          <input
+            type="file"
+            accept=".pdf"
+            onChange={handleFileUpload}
+            disabled={uploading}
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+          />
+        </div>
+
+        {uploading && (
+          <div className="text-center text-emerald-600">
+            <p>Processing PDF and creating searchable index...</p>
+          </div>
+        )}
+      </div>
+
+      {/* My PDFs */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">My Uploaded Documents</h3>
+        
+        {loading ? (
+          <p className="text-gray-500">Loading PDFs...</p>
+        ) : pdfs.length > 0 ? (
+          <div className="grid gap-4">
+            {pdfs.map((pdf) => (
+              <div 
+                key={pdf.filename} 
+                className={`border rounded-lg p-4 cursor-pointer hover:bg-gray-50 ${
+                  selectedPdf?.filename === pdf.filename ? 'bg-emerald-50 border-emerald-500' : ''
+                }`}
+                onClick={() => setSelectedPdf(pdf)}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium text-gray-900">📄 {pdf.original_filename}</h4>
+                    <p className="text-gray-500 text-sm">
+                      Uploaded: {new Date(pdf.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <div className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
+                      ✅ Ready for Q&A
+                    </div>
+                    <p className="text-gray-500 text-xs mt-1">
+                      {(pdf.file_size / 1024).toFixed(1)} KB
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg">No PDFs uploaded yet</p>
+            <p className="text-gray-400">Upload your first PDF to start asking questions</p>
+          </div>
+        )}
+      </div>
+
+      {/* Q&A Section */}
+      {selectedPdf && (
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Ask Questions about: {selectedPdf.original_filename}
+          </h3>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Your Question</label>
+              <textarea
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                placeholder="Ask anything about this document..."
+                className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 min-h-[100px]"
+              />
+            </div>
+
+            <button
+              onClick={askQuestion}
+              disabled={askLoading || !question.trim()}
+              className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {askLoading ? 'Searching Document...' : 'Ask Question'}
+            </button>
+          </div>
+
+          {/* Conversation History for selected PDF */}
+          {conversations[selectedPdf.filename] && conversations[selectedPdf.filename].length > 0 && (
+            <div className="mt-6 space-y-4">
+              <h4 className="text-lg font-semibold text-gray-900">Q&A History</h4>
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {conversations[selectedPdf.filename].map((msg, idx) => (
+                  <div key={idx} className={`p-4 rounded-xl ${
+                    msg.type === 'question' 
+                      ? 'bg-emerald-50 border-l-4 border-emerald-500' 
+                      : 'bg-blue-50 border-l-4 border-blue-500'
+                  }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-sm text-gray-600">
+                        {msg.type === 'question' ? '❓ Your Question:' : '🤖 AI Answer:'}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {msg.timestamp.toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <p className="text-gray-800 whitespace-pre-wrap">{msg.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// WhatsApp Monitor Component (for teachers)
+const WhatsAppMonitor = () => {
+  const [whatsappUsers, setWhatsappUsers] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [selectedPhone, setSelectedPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetchWhatsappUsers();
+    fetchMessages();
+  }, []);
+
+  const fetchWhatsappUsers = async () => {
+    try {
+      const response = await axios.get('/whatsapp/users');
+      setWhatsappUsers(response.data.whatsapp_users || []);
+    } catch (error) {
+      console.error('Failed to load WhatsApp users:', error);
+      toast.error('Failed to load WhatsApp users');
+    }
+  };
+
+  const fetchMessages = async (phoneNumber = '') => {
+    setLoading(true);
+    try {
+      const params = phoneNumber ? `?phone_number=${phoneNumber}` : '';
+      const response = await axios.get(`/whatsapp/messages${params}`);
+      setMessages(response.data.messages || []);
+    } catch (error) {
+      console.error('Failed to load messages:', error);
+      toast.error('Failed to load messages');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePhoneSelect = (phone) => {
+    setSelectedPhone(phone);
+    fetchMessages(phone);
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">WhatsApp AI Tutor Monitor</h1>
+        <p className="text-gray-600">Monitor student interactions with the WhatsApp AI tutor</p>
+      </div>
+
+      {/* WhatsApp Setup Info */}
+      <div className="bg-green-50 border border-green-200 rounded-xl p-6">
+        <h3 className="text-lg font-semibold text-green-900 mb-2">📱 WhatsApp Integration Status</h3>
+        <div className="text-green-800">
+          <p>✅ WhatsApp webhook configured</p>
+          <p>🤖 AI tutor responses enabled</p>
+          <p>📊 Students can generate quizzes via WhatsApp</p>
+          <p>❓ Students can ask questions and get answers from course materials</p>
+        </div>
+        <div className="mt-3 text-sm text-green-700 bg-green-100 p-3 rounded">
+          <strong>For students to use WhatsApp AI:</strong><br />
+          1. Send a WhatsApp message to the configured number<br />
+          2. Start with "register [name] [email]" to register<br />
+          3. Then ask questions or use commands like "quiz math algebra"
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Registered Users */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            📞 Registered Users ({whatsappUsers.length})
+          </h3>
+          
+          {whatsappUsers.length > 0 ? (
+            <div className="space-y-3">
+              {whatsappUsers.map((user) => (
+                <div 
+                  key={user.phone_number}
+                  className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                    selectedPhone === user.phone_number 
+                      ? 'bg-emerald-100 border-emerald-500 border' 
+                      : 'bg-gray-50 hover:bg-gray-100'
+                  }`}
+                  onClick={() => handlePhoneSelect(user.phone_number)}
+                >
+                  <div className="font-medium text-gray-900">
+                    {user.name || 'Unknown'}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    {user.phone_number}
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      user.registered 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {user.registered ? '✅ Registered' : '⏳ Pending'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {new Date(user.last_activity).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <MessageCircle className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+              <p className="text-gray-500">No WhatsApp users yet</p>
+            </div>
+          )}
+        </div>
+
+        {/* Messages */}
+        <div className="lg:col-span-2 bg-white rounded-xl p-6 shadow-sm border">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">
+              💬 Recent Messages {selectedPhone && `(${selectedPhone})`}
+            </h3>
+            <button
+              onClick={() => fetchMessages(selectedPhone)}
+              disabled={loading}
+              className="px-3 py-1 bg-emerald-500 text-white rounded text-sm hover:bg-emerald-600 disabled:opacity-50"
+            >
+              {loading ? 'Loading...' : 'Refresh'}
+            </button>
+          </div>
+
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {messages.length > 0 ? (
+              messages.map((msg) => (
+                <div key={msg.id} className={`p-3 rounded-lg ${
+                  msg.message_type === 'incoming' 
+                    ? 'bg-blue-50 border-l-4 border-blue-500' 
+                    : 'bg-green-50 border-l-4 border-green-500'
+                }`}>
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="text-sm font-medium text-gray-600">
+                      {msg.message_type === 'incoming' ? '👤 Student' : '🤖 AI Tutor'}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {new Date(msg.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                  <p className="text-gray-800 whitespace-pre-wrap text-sm">
+                    {msg.message_text}
+                  </p>
+                  <div className="text-xs text-gray-500 mt-1">
+                    From: {msg.phone_number}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-500">
+                  {selectedPhone ? 'No messages from this user' : 'Select a user to view messages'}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Statistics */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">📊 WhatsApp Activity Stats</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-emerald-600">{whatsappUsers.length}</div>
+            <div className="text-gray-600 text-sm">Total Users</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-600">
+              {whatsappUsers.filter(u => u.registered).length}
+            </div>
+            <div className="text-gray-600 text-sm">Registered</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-purple-600">{messages.length}</div>
+            <div className="text-gray-600 text-sm">Total Messages</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-orange-600">
+              {messages.filter(m => m.message_type === 'incoming').length}
+            </div>
+            <div className="text-gray-600 text-sm">Student Messages</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // My Children Component (for parents)
 const MyChildren = () => {
   const [children, setChildren] = useState([]);
@@ -2823,6 +3654,8 @@ const Dashboard = () => {
         return <StudyContent />;
       case 'quiz':
         return <QuizSystem />;
+      case 'dynamic-quiz':
+        return <DynamicQuiz />;
       case 'ask':
         return <AskAI />;
       case 'create-content':
@@ -2843,8 +3676,12 @@ const Dashboard = () => {
         return <StudentProfile />;
       case 'notes':
         return <NotesManager />;
+      case 'my-pdfs':
+        return <StudentPDFManager />;
       case 'upload-materials':
         return <FileUpload />;
+      case 'whatsapp':
+        return <WhatsAppMonitor />;
       case 'chat':
         return <div className="p-6">Messages - Coming Soon (WhatsApp Integration)</div>;
       default:
@@ -2872,7 +3709,7 @@ const Dashboard = () => {
             >
               <Menu className="w-6 h-6" />
             </button>
-            <h1 className="font-semibold">EduAgent</h1>
+            <h1 className="font-semibold">EduMate</h1>
             <div className="w-10" /> {/* Spacer */}
           </div>
         </div>
@@ -2892,7 +3729,7 @@ const Loading = () => (
       <div className="w-16 h-16 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-pulse">
         <Brain className="w-8 h-8 text-white" />
       </div>
-      <p className="text-gray-600">Loading EduAgent...</p>
+      <p className="text-gray-600">Loading EduMate...</p>
     </div>
   </div>
 );

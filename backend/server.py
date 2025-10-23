@@ -17,6 +17,13 @@ import PyPDF2
 import io
 import chromadb
 from sentence_transformers import SentenceTransformer
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+from pinecone import Pinecone, ServerlessSpec
+from twilio.rest import Client as TwilioClient
 import json
 
 ROOT_DIR = Path(__file__).parent
@@ -24,6 +31,7 @@ load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
+print(mongo_url)
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
@@ -40,12 +48,63 @@ PASSWORD_SALT = "eduagent_salt_2024"
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
+# Pinecone Configuration
+PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
+
+# Email Configuration
+SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+EMAIL_USER = os.environ.get("EMAIL_USER")
+EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
+
+# WhatsApp Configuration
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER")
+WHATSAPP_WEBHOOK_URL = os.environ.get("WHATSAPP_WEBHOOK_URL")
+
 # Configure Gemini
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Initialize vector database and sentence transformer
-chroma_client = chromadb.Client()
+# Initialize Pinecone
+pc = Pinecone(api_key=PINECONE_API_KEY)
+
+# Create or connect to index
+index_name = "eduagent-rag"
+try:
+    # Check if index exists, if not create it
+    existing_indexes = [index.name for index in pc.list_indexes()]
+    if index_name not in existing_indexes:
+        pc.create_index(
+            name=index_name,
+            dimension=384,  # all-MiniLM-L6-v2 dimension
+            metric="cosine",
+            spec=ServerlessSpec(
+                cloud="aws",
+                region="us-east-1"
+            )
+        )
+        logging.info("Pinecone index created successfully")
+    
+    pinecone_index = pc.Index(index_name)
+    logging.info("Pinecone index initialized successfully")
+except Exception as e:
+    logging.error(f"Pinecone initialization error: {e}")
+    pinecone_index = None
+
+# Initialize sentence transformer for embeddings
 sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# Initialize Twilio client
+try:
+    if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
+        twilio_client = TwilioClient(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    else:
+        twilio_client = None
+        logging.warning("Twilio credentials not provided, WhatsApp features disabled")
+except Exception as e:
+    logging.error(f"Twilio initialization error: {e}")
+    twilio_client = None
 
 # Razorpay Configuration
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID")
@@ -54,8 +113,8 @@ RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET")
 CALLBACK_BASE_URL = os.environ.get("CALLBACK_BASE_URL")
 
 # Create the main app
-app = FastAPI(title="EduAgent - AI Powered Educational Platform")
 
+app = FastAPI(title="EduAgent - AI Powered Educational Platform",docs_url="/api/docs",redoc_url="/api/redoc",openapi_url="/api/openapi.json")
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
@@ -325,6 +384,63 @@ class QuizAnalysis(BaseModel):
     recommendations: List[str] = []
     performance_trend: str  # improving, declining, stable
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+# Dynamic Quiz Models
+class DynamicQuizRequest(BaseModel):
+    subject: str
+    topic: str
+    difficulty: str  # easy, medium, hard
+    num_questions: int = Field(ge=5, le=10)  # Between 5 and 10 questions
+    grade_level: Optional[str] = "Grade 8"
+
+class QuizEvaluation(BaseModel):
+    student_id: str
+    quiz_data: Dict[str, Any]
+    student_answers: Dict[str, Any]
+    score: int
+    total_questions: int
+    percentage: float
+    evaluation_report: str
+    recommendations: List[str]
+    strengths: List[str]
+    weaknesses: List[str]
+
+# Email Models
+class EmailReport(BaseModel):
+    recipient_email: str
+    student_name: str
+    quiz_title: str
+    score: int
+    total_questions: int
+    percentage: float
+    evaluation_report: str
+    recommendations: List[str]
+
+# Student PDF Upload Model  
+class StudentPDFUpload(BaseModel):
+    student_id: str
+    filename: str
+    original_filename: str
+    file_size: int
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+# WhatsApp Models
+class WhatsAppMessage(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    phone_number: str
+    message_text: str
+    student_id: Optional[str] = None
+    message_type: str  # incoming, outgoing
+    processed: bool = False
+    response_sent: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class WhatsAppUser(BaseModel):
+    phone_number: str
+    student_id: Optional[str] = None
+    name: Optional[str] = None
+    registered: bool = False
+    last_activity: datetime = Field(default_factory=datetime.utcnow)
 
 # ============= UTILITY FUNCTIONS =============
 
@@ -1003,50 +1119,85 @@ async def get_conversations(
     return [ChatMessage(**msg) for msg in messages]
 
 # ============= DASHBOARD ROUTES =============
+from bson import ObjectId
+
+def fix_objectids(obj):
+    """Recursively convert ObjectId to str in MongoDB documents."""
+    if isinstance(obj, list):
+        return [fix_objectids(item) for item in obj]
+    elif isinstance(obj, dict):
+        new_obj = {}
+        for k, v in obj.items():
+            if isinstance(v, ObjectId):
+                new_obj[k] = str(v)
+            else:
+                new_obj[k] = fix_objectids(v)
+        return new_obj
+    else:
+        return obj
 
 @api_router.get("/dashboard/student")
 async def get_student_dashboard(current_user: User = Depends(get_current_user)):
     if current_user.role != "student":
         raise HTTPException(status_code=403, detail="Student access required")
-    
-    # Get recent activities
-    recent_quizzes = await db.quiz_attempts.find({"student_id": current_user.id}).sort("completed_at", -1).to_list(5)
-    recent_questions = await db.questions.find({"student_id": current_user.id}).sort("created_at", -1).to_list(5)
-    
-    # Get available content
-    available_content = await db.study_content.find({}).sort("created_at", -1).to_list(10)
-    available_quizzes = await db.quizzes.find({}).sort("created_at", -1).to_list(10)
-    
+
+    # Fetch and convert data
+    recent_quizzes = fix_objectids(
+        await db.quiz_attempts.find({"student_id": current_user.id})
+        .sort("completed_at", -1)
+        .to_list(5)
+    )
+
+    recent_questions = fix_objectids(
+        await db.questions.find({"student_id": current_user.id})
+        .sort("created_at", -1)
+        .to_list(5)
+    )
+
+    available_content = fix_objectids(
+        await db.study_content.find({}).sort("created_at", -1).to_list(10)
+    )
+
+    available_quizzes = fix_objectids(
+        await db.quizzes.find({}).sort("created_at", -1).to_list(10)
+    )
+
+    quick_stats = {
+        "total_quizzes_taken": len(
+            await db.quiz_attempts.find({"student_id": current_user.id}).to_list(1000)
+        ),
+        "questions_asked": len(
+            await db.questions.find({"student_id": current_user.id}).to_list(1000)
+        )
+    }
+
     return {
-        "user": current_user,
+        "user": fix_objectids(current_user.dict() if hasattr(current_user, "dict") else current_user),
         "recent_quiz_attempts": recent_quizzes,
         "recent_questions": recent_questions,
         "available_content": available_content,
         "available_quizzes": available_quizzes,
-        "quick_stats": {
-            "total_quizzes_taken": len(await db.quiz_attempts.find({"student_id": current_user.id}).to_list(1000)),
-            "questions_asked": len(await db.questions.find({"student_id": current_user.id}).to_list(1000))
-        }
+        "quick_stats": quick_stats
     }
 
 @api_router.get("/dashboard/teacher")
 async def get_teacher_dashboard(current_user: User = Depends(get_current_user)):
     if current_user.role != "teacher":
         raise HTTPException(status_code=403, detail="Teacher access required")
-    
+
     # Get created content
     my_content = await db.study_content.find({"created_by": current_user.id}).sort("created_at", -1).to_list(100)
     my_quizzes = await db.quizzes.find({"created_by": current_user.id}).sort("created_at", -1).to_list(100)
-    
+
     # Get student activities on my content
-    my_quiz_ids = [quiz["id"] for quiz in my_quizzes]
+    my_quiz_ids = [quiz["_id"] for quiz in my_quizzes]  # ✅ use "_id", not "id"
     quiz_attempts = await db.quiz_attempts.find({"quiz_id": {"$in": my_quiz_ids}}).sort("completed_at", -1).to_list(100)
-    
-    return {
-        "user": current_user,
-        "my_content": my_content,
-        "my_quizzes": my_quizzes,
-        "recent_quiz_attempts": quiz_attempts,
+
+    result = {
+        "user": fix_objectids(current_user.dict() if hasattr(current_user, "dict") else current_user),
+        "my_content": fix_objectids(my_content),
+        "my_quizzes": fix_objectids(my_quizzes),
+        "recent_quiz_attempts": fix_objectids(quiz_attempts),
         "stats": {
             "total_content_created": len(my_content),
             "total_quizzes_created": len(my_quizzes),
@@ -1054,25 +1205,30 @@ async def get_teacher_dashboard(current_user: User = Depends(get_current_user)):
         }
     }
 
+    return fix_objectids(result)
+
 @api_router.get("/dashboard/parent")
 async def get_parent_dashboard(current_user: User = Depends(get_current_user)):
     if current_user.role != "parent":
         raise HTTPException(status_code=403, detail="Parent access required")
     
-    # Get linked students (simplified - in real app, would have proper linking)
-    students = await db.users.find({"role": "student"}).to_list(100)  # TODO: Add proper parent-child linking
-    
-    # Get progress for all students (simplified)
+    students = await db.users.find({"role": "student"}).to_list(100)
+    students = [fix_objectids(s) for s in students]
+
     student_progress = []
-    for student in students[:5]:  # Limit for demo
-        progress = await get_student_progress(student["id"], current_user)
-        student_progress.append({"student": student, "progress": progress})
-    
+    for student in students[:5]:
+        progress = await get_student_progress(student["_id"], current_user)
+        student_progress.append({
+            "student": student,
+            "progress": progress
+        })
+
     return {
-        "user": current_user,
-        "students": students[:5],  # Demo data
+        "user": fix_objectids(current_user.dict() if hasattr(current_user, "dict") else current_user),
+        "students": students[:5],
         "student_progress": student_progress
     }
+
 
 # ============= PAYMENT ROUTES =============
 
@@ -1553,36 +1709,43 @@ async def extract_text_from_pdf(file_content: bytes) -> List[str]:
         logging.error(f"PDF extraction error: {e}")
         return []
 
-async def create_rag_embeddings(material_id: str, pages_text: List[str]):
-    """Create embeddings for RAG system"""
+async def create_rag_embeddings(material_id: str, pages_text: List[str], upload_type: str = "teacher"):
+    """Create embeddings for RAG system using Pinecone"""
     try:
-        collection_name = f"material_{material_id}"
-        
-        try:
-            collection = chroma_client.get_collection(collection_name)
-        except:
-            collection = chroma_client.create_collection(collection_name)
+        if not pinecone_index:
+            logging.error("Pinecone index not available")
+            return False
         
         # Create embeddings for each page
         for page_num, text in enumerate(pages_text):
             if text.strip():  # Only process non-empty pages
                 # Generate embedding
-                embedding = sentence_model.encode(text)
+                embedding = sentence_model.encode(text).tolist()
                 
-                # Add to vector database
-                collection.add(
-                    embeddings=[embedding.tolist()],
-                    documents=[text],
-                    metadatas=[{"page_number": page_num, "material_id": material_id}],
-                    ids=[f"{material_id}_page_{page_num}"]
-                )
+                # Create unique ID
+                doc_id = f"{material_id}_page_{page_num}"
                 
-                # Store document record
+                # Upsert to Pinecone
+                pinecone_index.upsert([
+                    {
+                        "id": doc_id,
+                        "values": embedding,
+                        "metadata": {
+                            "material_id": material_id,
+                            "page_number": page_num,
+                            "text": text[:1000],  # Store first 1000 chars in metadata
+                            "upload_type": upload_type,
+                            "full_text": text
+                        }
+                    }
+                ])
+                
+                # Store document record in MongoDB
                 rag_doc = RAGDocument(
                     material_id=material_id,
                     content=text,
                     page_number=page_num,
-                    embedding_id=f"{material_id}_page_{page_num}"
+                    embedding_id=doc_id
                 )
                 await db.rag_documents.insert_one(rag_doc.dict())
         
@@ -1591,53 +1754,162 @@ async def create_rag_embeddings(material_id: str, pages_text: List[str]):
         logging.error(f"RAG embedding error: {e}")
         return False
 
-async def query_rag_system(question: str, subject: str = None, grade_level: str = None) -> str:
-    """Query RAG system for course-related answers"""
+async def query_rag_system(
+    question: str,
+    subject: str = None,
+    grade_level: str = None,
+    material_filter: str = None,
+    include_teacher_materials: bool = True,
+    debug: bool = False,          # set True temporarily to get verbose prints
+    include_values_for_debug: bool = False,  # set True to inspect stored vector lengths
+    score_threshold: float = 0.3  # relaxed threshold
+) -> str:
+    """Query RAG system using Pinecone for course-related answers.
+       Debug-friendly: set debug=True to print diagnostic info.
+    """
     try:
-        # Get all relevant collections
-        collections = chroma_client.list_collections()
+        if not pinecone_index:
+            return "RAG system not available. Please contact administrator."
         
-        if not collections:
-            return "No study materials have been uploaded yet. Please ask your teacher to upload course materials."
+        # --- 1) create query embedding and normalize it ---
+        raw_q_emb = sentence_model.encode(question)
+        # guard
+        if raw_q_emb is None:
+            if debug: print("❌ sentence_model returned None for query embedding")
+            return "Failed to create query embedding."
         
-        # Generate query embedding
-        query_embedding = sentence_model.encode(question)
+        # convert to numpy and normalize (good for cosine sim)
+        import numpy as np
+        q_vec = np.array(raw_q_emb, dtype=float)
+        norm = np.linalg.norm(q_vec)
+        if norm == 0 or np.isnan(norm):
+            if debug: print("❌ query embedding has zero or NaN norm:", norm)
+            return "Failed to create a usable query embedding."
+        q_vec = (q_vec / norm).tolist()
         
-        # Search across all material collections
-        all_results = []
-        for collection in collections:
-            try:
-                results = collection.query(
-                    query_embeddings=[query_embedding.tolist()],
-                    n_results=3
-                )
-                if results['documents']:
-                    all_results.extend(results['documents'][0])
-            except:
-                continue
+        if debug:
+            print("🔷 QUERY EMBEDDING len:", len(q_vec))
+            print("🔷 QUERY EMBEDDING sample:", q_vec[:6])
         
-        if not all_results:
-            return "I couldn't find relevant information in the uploaded materials. Please try a different question."
+        # --- 2) prepare filter safely ---
+        filter_dict = None
+        if material_filter:
+            # exact match on the metadata key you used during upsert
+            filter_dict = {"material_id": {"$eq": material_filter}}
+        elif include_teacher_materials:
+            filter_dict = {"upload_type": {"$in": ["teacher", "student"]}}
+        # else leave None (no filter)
         
-        # Use Gemini to generate answer based on retrieved context
+        if debug:
+            print("🔍 FILTER:", filter_dict)
+        
+        # --- 3) Query Pinecone (temporarily include values if debugging) ---
+        query_kwargs = dict(
+            vector=q_vec,
+            top_k=8,
+            include_metadata=True
+        )
+        if filter_dict:
+            query_kwargs['filter'] = filter_dict
+        if include_values_for_debug:
+            query_kwargs['include_values'] = True
+        
+        results = pinecone_index.query(**query_kwargs)
+        
+        # Defensive: results may be None or have no matches
+        matches = getattr(results, "matches", None) or results.get("matches") if isinstance(results, dict) else results.matches if results else []
+        if debug:
+            print("📦 matches found:", len(matches))
+            # print each match's score + metadata summary
+            for i, m in enumerate(matches):
+                score = getattr(m, "score", None) or (m.get("score") if isinstance(m, dict) else None)
+                meta = getattr(m, "metadata", None) or (m.get("metadata") if isinstance(m, dict) else None)
+                values_len = getattr(m, "values", None)
+                if values_len is not None:
+                    try:
+                        values_len = len(values_len)
+                    except Exception:
+                        values_len = "n/a"
+                else:
+                    values_len = "not included"
+                print(f"  match[{i}] score={score} values_len={values_len} meta_keys={list(meta.keys()) if meta else None}")
+        
+        if not matches:
+            # nothing found — provide informative message (and debug hints)
+            msg = "I couldn't find relevant information in the uploaded materials."
+            if debug:
+                msg += " Debug hints: check index dimension, ensure embeddings were upserted as numeric lists, verify metadata keys and namespaces."
+            return msg
+        
+        # --- 4) Build contexts: accept by score OR fallback to top-k ---
+        contexts = []
+        sources = []
+        # first try collecting by threshold
+        for m in matches:
+            score = getattr(m, "score", None) or (m.get("score") if isinstance(m, dict) else None) or 0.0
+            meta = getattr(m, "metadata", None) or (m.get("metadata") if isinstance(m, dict) else {})
+            full_text = None
+            # prefer 'full_text', then 'text' then 'content'
+            for key in ("full_text", "text", "content"):
+                if isinstance(meta, dict) and meta.get(key):
+                    full_text = meta.get(key)
+                    break
+            if score >= score_threshold and full_text:
+                contexts.append(full_text)
+                sources.append(meta.get("upload_type", "unknown"))
+        
+        # if nothing passed threshold, fallback to top-k matches that have any text
+        if not contexts:
+            if debug: print("⚠️ No matches passed threshold; falling back to top-k matches")
+            for m in matches[:6]:  # fallback: top 6
+                meta = getattr(m, "metadata", None) or (m.get("metadata") if isinstance(m, dict) else {})
+                full_text = None
+                for key in ("full_text", "text", "content"):
+                    if isinstance(meta, dict) and meta.get(key):
+                        full_text = meta.get(key)
+                        break
+                if full_text:
+                    contexts.append(full_text)
+                    sources.append(meta.get("upload_type", "unknown"))
+                if len(contexts) >= 6:
+                    break
+        
+        if not contexts:
+            # final fallback -> general AI answer
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            prompt = f"""As an AI tutor, answer this student's question about {subject or 'academics'}:
+
+Question: {question}
+
+Provide a clear, educational answer appropriate for {grade_level or 'general'} level. Since no specific course materials were found, provide general knowledge and suggest the student ask their teacher for more specific information."""
+            response = model.generate_content(prompt)
+            return f"📚 **General AI Answer** (No specific course materials found):\n\n{response.text}\n\n💡 *Tip: Ask your teacher to upload course materials for more specific answers!*"
+        
+        # --- 5) Generate final answer with LLM using the collected contexts ---
         model = genai.GenerativeModel('gemini-2.5-flash')
-        
-        context = "\n\n".join(all_results[:3])  # Use top 3 results
-        
-        prompt = f"""Based on the following course materials, answer the student's question:
+        context_text = "\n\n".join(contexts[:6])  # combine up to 6 chunks
+        sources_text = ", ".join(sorted(set(sources))[:3])
+        llm_prompt = f"""Based on the following course materials, answer the student's question comprehensively:
 
 Course Materials Context:
-{context}
+{context_text}
 
 Student Question: {question}
 
-Please provide a clear, educational answer based on the course materials. If the materials don't contain enough information, mention that and provide what you can. Make the answer appropriate for {grade_level or 'general'} level in {subject or 'the subject'}."""
+Instructions:
+1. Provide a clear, educational answer based primarily on the course materials
+2. If the materials don't fully cover the question, supplement with relevant knowledge
+3. Make the answer appropriate for {grade_level or 'general'} level in {subject or 'the subject'}
+4. Be thorough but easy to understand
+5. Include examples when helpful
 
-        response = model.generate_content(prompt)
-        return response.text
-        
+Answer:"""
+        response = model.generate_content(llm_prompt)
+        return f"📖 **Answer from Course Materials** (Sources: {sources_text}):\n\n{response.text}"
+    
     except Exception as e:
-        logging.error(f"RAG query error: {e}")
+        logging.exception("RAG query error:")
+        # Provide a plain message to client (not entire stack)
         return "I'm having trouble accessing the course materials right now. Please try again later."
 
 async def summarize_notes(note_content: str, summary_type: str = "brief") -> str:
@@ -1673,6 +1945,487 @@ Key Points:"""
     except Exception as e:
         logging.error(f"Note summarization error: {e}")
         return "Failed to summarize notes. Please try again."
+
+# ============= DYNAMIC QUIZ FUNCTIONS =============
+
+async def generate_dynamic_quiz(request: DynamicQuizRequest) -> Dict[str, Any]:
+    """Generate dynamic quiz using Gemini AI based on user inputs"""
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        prompt = f"""Generate a {request.difficulty} difficulty quiz for {request.grade_level or 'Grade 8'} students.
+
+Subject: {request.subject}
+Topic: {request.topic}
+Number of Questions: {request.num_questions}
+Difficulty Level: {request.difficulty}
+
+Please create exactly {request.num_questions} multiple choice questions. Each question should have 4 options (A, B, C, D) with only one correct answer.
+
+Format your response as JSON:
+{{
+  "quiz_title": "Quiz title based on topic",
+  "subject": "{request.subject}",
+  "topic": "{request.topic}",
+  "difficulty": "{request.difficulty}",
+  "grade_level": "{request.grade_level}",
+  "questions": [
+    {{
+      "question_number": 1,
+      "question": "Question text here",
+      "options": {{
+        "A": "Option A text",
+        "B": "Option B text", 
+        "C": "Option C text",
+        "D": "Option D text"
+      }},
+      "correct_answer": "A",
+      "explanation": "Brief explanation of why this is correct"
+    }}
+  ]
+}}
+
+Make sure questions are appropriate for {request.difficulty} difficulty and {request.grade_level} level."""
+
+        response = model.generate_content(prompt)
+        
+        # Parse the JSON response
+        import re
+        json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+        if json_match:
+            quiz_data = json.loads(json_match.group())
+            quiz_data["id"] = str(uuid.uuid4())
+            quiz_data["created_at"] = datetime.utcnow().isoformat()
+            return quiz_data
+        else:
+            raise ValueError("Could not parse quiz JSON")
+            
+    except Exception as e:
+        logging.error(f"Dynamic quiz generation error: {e}")
+        # Return fallback quiz
+        return {
+            "id": str(uuid.uuid4()),
+            "quiz_title": f"{request.topic} Quiz",
+            "subject": request.subject,
+            "topic": request.topic,
+            "difficulty": request.difficulty,
+            "grade_level": request.grade_level,
+            "questions": [
+                {
+                    "question_number": 1,
+                    "question": f"What is a key concept in {request.topic}?",
+                    "options": {
+                        "A": "Option A",
+                        "B": "Option B", 
+                        "C": "Option C",
+                        "D": "Option D"
+                    },
+                    "correct_answer": "A",
+                    "explanation": "This is the correct answer based on the topic."
+                }
+            ],
+            "created_at": datetime.utcnow().isoformat()
+        }
+
+async def evaluate_quiz_with_gemini(quiz_data: Dict[str, Any], student_answers: Dict[str, str], student_name: str) -> QuizEvaluation:
+    """Evaluate quiz performance using Gemini AI"""
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        # Calculate basic score
+        correct_count = 0
+        total_questions = len(quiz_data["questions"])
+        
+        detailed_analysis = []
+        for question in quiz_data["questions"]:
+            q_num = str(question["question_number"])
+            student_answer = student_answers.get(q_num, "")
+            correct_answer = question["correct_answer"]
+            
+            is_correct = student_answer == correct_answer
+            if is_correct:
+                correct_count += 1
+                
+            detailed_analysis.append({
+                "question": question["question"],
+                "student_answer": student_answer,
+                "correct_answer": correct_answer,
+                "is_correct": is_correct,
+                "explanation": question["explanation"]
+            })
+        
+        percentage = (correct_count / total_questions) * 100
+        
+        # Generate AI evaluation
+        analysis_prompt = f"""Analyze this quiz performance for student {student_name}:
+
+Quiz Topic: {quiz_data["topic"]} ({quiz_data["subject"]})
+Difficulty: {quiz_data["difficulty"]}
+Score: {correct_count}/{total_questions} ({percentage:.1f}%)
+
+Detailed Performance:
+{json.dumps(detailed_analysis, indent=2)}
+
+Please provide:
+1. A comprehensive evaluation report (2-3 paragraphs)
+2. List of 3-5 specific recommendations for improvement
+3. List of 2-3 strengths demonstrated
+4. List of 2-3 areas that need work
+
+Format as JSON:
+{{
+  "evaluation_report": "Detailed performance analysis...",
+  "recommendations": ["recommendation1", "recommendation2", ...],
+  "strengths": ["strength1", "strength2", ...],
+  "weaknesses": ["weakness1", "weakness2", ...]
+}}"""
+
+        ai_response = model.generate_content(analysis_prompt)
+        
+        # Parse AI evaluation
+        import re
+        json_match = re.search(r'\{.*\}', ai_response.text, re.DOTALL)
+        if json_match:
+            ai_eval = json.loads(json_match.group())
+        else:
+            ai_eval = {
+                "evaluation_report": f"Student scored {percentage:.1f}% on the {quiz_data['topic']} quiz.",
+                "recommendations": ["Review incorrect answers", "Practice more questions"],
+                "strengths": ["Shows understanding of basic concepts"],
+                "weaknesses": ["Needs improvement in specific areas"]
+            }
+        
+        return QuizEvaluation(
+            student_id="",  # Will be set by caller
+            quiz_data=quiz_data,
+            student_answers=student_answers,
+            score=correct_count,
+            total_questions=total_questions,
+            percentage=percentage,
+            evaluation_report=ai_eval["evaluation_report"],
+            recommendations=ai_eval["recommendations"],
+            strengths=ai_eval["strengths"],
+            weaknesses=ai_eval["weaknesses"]
+        )
+        
+    except Exception as e:
+        logging.error(f"Quiz evaluation error: {e}")
+        # Return basic evaluation
+        return QuizEvaluation(
+            student_id="",
+            quiz_data=quiz_data,
+            student_answers=student_answers,
+            score=correct_count,
+            total_questions=total_questions,
+            percentage=percentage,
+            evaluation_report=f"Quiz completed with {percentage:.1f}% score.",
+            recommendations=["Review the questions and explanations"],
+            strengths=["Completed the quiz"],
+            weaknesses=["Areas for improvement identified"]
+        )
+
+# ============= EMAIL FUNCTIONS =============
+
+async def send_quiz_report_email(email_report: EmailReport) -> bool:
+    """Send formatted quiz report via email"""
+    try:
+        # Create message
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_USER
+        msg['To'] = email_report.recipient_email
+        msg['Subject'] = f"Quiz Report: {email_report.quiz_title}"
+        
+        # Create HTML email body
+        html_body = f"""
+        <html>
+        <head>
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                .header {{ background-color: #10b981; color: white; padding: 20px; text-align: center; }}
+                .content {{ padding: 20px; }}
+                .score-box {{ background-color: #f0f9ff; border: 2px solid #0ea5e9; padding: 15px; margin: 15px 0; text-align: center; }}
+                .recommendations {{ background-color: #fef3c7; padding: 15px; margin: 15px 0; }}
+                .footer {{ background-color: #f9fafb; padding: 15px; text-align: center; font-size: 12px; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>🎓 EduAgent Quiz Report</h1>
+                <h2>{email_report.quiz_title}</h2>
+            </div>
+            
+            <div class="content">
+                <h3>Dear {email_report.student_name},</h3>
+                
+                <p>Your quiz has been evaluated and here are your results:</p>
+                
+                <div class="score-box">
+                    <h2>Your Score: {email_report.score}/{email_report.total_questions}</h2>
+                    <h3>Percentage: {email_report.percentage:.1f}%</h3>
+                    <p><strong>Performance Level: {"Excellent" if email_report.percentage >= 90 else "Good" if email_report.percentage >= 70 else "Needs Improvement"}</strong></p>
+                </div>
+                
+                <h3>📊 Detailed Evaluation:</h3>
+                <p>{email_report.evaluation_report}</p>
+                
+                <div class="recommendations">
+                    <h3>💡 Recommendations for Improvement:</h3>
+                    <ul>
+        """
+        
+        for rec in email_report.recommendations:
+            html_body += f"<li>{rec}</li>"
+            
+        html_body += f"""
+                    </ul>
+                </div>
+                
+                <h3>🎯 Next Steps:</h3>
+                <ul>
+                    <li>Review the topics where you scored lower</li>
+                    <li>Practice similar questions to strengthen your understanding</li>
+                    <li>Ask your teacher for help on challenging concepts</li>
+                    <li>Take more quizzes to track your progress</li>
+                </ul>
+                
+                <p>Keep up the great work and continue learning!</p>
+            </div>
+            
+            <div class="footer">
+                <p>This report was generated by EduAgent AI Learning Platform</p>
+                <p>Contact your teacher if you have any questions about this report.</p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Attach HTML body
+        msg.attach(MIMEText(html_body, 'html'))
+        
+        # Send email
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(EMAIL_USER, EMAIL_PASSWORD)
+        text = msg.as_string()
+        server.sendmail(EMAIL_USER, email_report.recipient_email, text)
+        server.quit()
+        
+        logging.info(f"Quiz report sent to {email_report.recipient_email}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"Email sending error: {e}")
+        return False
+
+# ============= WHATSAPP FUNCTIONS =============
+
+async def send_whatsapp_message(phone_number: str, message: str) -> bool:
+    """Send WhatsApp message via Twilio"""
+    try:
+        if not twilio_client:
+            logging.error("Twilio client not initialized")
+            return False
+        
+        # Ensure phone number is in WhatsApp format
+        if not phone_number.startswith("whatsapp:"):
+            phone_number = f"whatsapp:{phone_number}"
+        
+        message = twilio_client.messages.create(
+            body=message,
+            from_=TWILIO_WHATSAPP_NUMBER,
+            to=phone_number
+        )
+        
+        logging.info(f"WhatsApp message sent to {phone_number}: {message.sid}")
+        return True
+        
+    except Exception as e:
+        logging.error(f"WhatsApp message error: {e}")
+        return False
+
+async def process_whatsapp_message(phone_number: str, message_text: str) -> str:
+    """Process incoming WhatsApp message and generate AI response"""
+    try:
+        # Clean phone number
+        clean_phone = phone_number.replace("whatsapp:", "")
+        
+        # Check if user is registered
+        whatsapp_user = await db.whatsapp_users.find_one({"phone_number": clean_phone})
+        
+        # Handle commands
+        message_lower = message_text.lower().strip()
+        
+        # Registration process
+        if not whatsapp_user or not whatsapp_user.get("registered", False):
+            if message_lower.startswith("register"):
+                return """🎓 Welcome to EduAgent WhatsApp AI Tutor!
+
+To complete registration, please send your details in this format:
+REGISTER [Your Name] [Your Email] [Student ID (optional)]
+
+Example: 
+REGISTER John Smith john@email.com
+
+After registration, you can:
+📚 Ask questions: Just type your question
+🎯 Generate quiz: Type "quiz [subject] [topic]"  
+📊 Get report: Type "report"
+
+Start by sending your registration details!"""
+            
+            elif message_lower.startswith("register "):
+                # Process registration
+                parts = message_text.split(" ", 3)
+                if len(parts) >= 3:
+                    name = parts[1]
+                    email = parts[2]
+                    student_id = parts[3] if len(parts) > 3 else None
+                    
+                    # Find student by email if no ID provided
+                    if not student_id:
+                        student = await db.users.find_one({"email": email, "role": "student"})
+                        if student:
+                            student_id = student["id"]
+                    
+                    # Create or update WhatsApp user
+                    whatsapp_user_data = WhatsAppUser(
+                        phone_number=clean_phone,
+                        student_id=student_id,
+                        name=name,
+                        registered=True
+                    )
+                    
+                    await db.whatsapp_users.replace_one(
+                        {"phone_number": clean_phone},
+                        whatsapp_user_data.dict(),
+                        upsert=True
+                    )
+                    
+                    return f"""✅ Registration successful!
+
+Welcome {name}! 🎉
+
+You can now:
+📚 **Ask Questions**: Just type any academic question
+🎯 **Generate Quiz**: Type "quiz [subject] [topic] [difficulty]"
+📊 **Get Report**: Type "report" for your progress
+💡 **Study Help**: Ask for explanations, examples, or help with homework
+
+Try asking: "What is photosynthesis?" or "quiz math algebra medium"
+
+Happy learning! 🚀"""
+                else:
+                    return "❌ Registration format incorrect. Use: REGISTER [Name] [Email] [Student ID (optional)]"
+            else:
+                return """👋 Hello! I'm EduAgent AI Tutor.
+
+Please register first by sending:
+REGISTER [Your Name] [Your Email]
+
+Example: REGISTER John Smith john@email.com"""
+        
+        # User is registered - process commands
+        student_id = whatsapp_user.get("student_id")
+        
+        # Quiz generation command
+        if message_lower.startswith("quiz "):
+            parts = message_text.split(" ", 4)
+            if len(parts) >= 3:
+                subject = parts[1].title()
+                topic = parts[2]
+                difficulty = parts[3] if len(parts) > 3 else "medium"
+                
+                # Generate quiz
+                quiz_request = DynamicQuizRequest(
+                    subject=subject,
+                    topic=topic,
+                    difficulty=difficulty,
+                    num_questions=5  # Shorter quiz for WhatsApp
+                )
+                
+                quiz_data = await generate_dynamic_quiz(quiz_request)
+                
+                # Format quiz for WhatsApp
+                quiz_text = f"🎯 **{quiz_data['quiz_title']}**\n"
+                quiz_text += f"📚 Subject: {subject} | 📊 Difficulty: {difficulty}\n\n"
+                
+                for i, q in enumerate(quiz_data['questions'][:3], 1):  # Show only first 3 questions
+                    quiz_text += f"**Q{i}:** {q['question']}\n"
+                    for opt, text in q['options'].items():
+                        quiz_text += f"{opt}) {text}\n"
+                    quiz_text += "\n"
+                
+                quiz_text += "📱 Complete the full quiz on the EduAgent web platform for detailed analysis and email report!\n\n"
+                quiz_text += f"🔗 Login at: learnmate-ai-12.preview.emergentagent.com"
+                
+                return quiz_text
+            else:
+                return "❌ Quiz format: quiz [subject] [topic] [difficulty]\nExample: quiz math algebra medium"
+        
+        # Report command
+        elif message_lower in ["report", "progress"]:
+            if student_id:
+                try:
+                    # Get recent quiz attempts
+                    attempts = await db.quiz_evaluations.find({"student_id": student_id}).sort("created_at", -1).to_list(5)
+                    
+                    if attempts:
+                        report = "📊 **Your Recent Progress**\n\n"
+                        for attempt in attempts[:3]:
+                            quiz_title = attempt.get("quiz_data", {}).get("quiz_title", "Quiz")
+                            percentage = attempt.get("percentage", 0)
+                            emoji = "🟢" if percentage >= 70 else "🟡" if percentage >= 50 else "🔴"
+                            report += f"{emoji} {quiz_title}: {percentage:.1f}%\n"
+                        
+                        report += f"\n📈 **Latest Performance**: {attempts[0]['percentage']:.1f}%\n"
+                        report += "🎯 Keep practicing to improve!\n\n"
+                        report += "📧 Check your email for detailed reports after each quiz."
+                        return report
+                    else:
+                        return "📊 No quiz attempts found yet.\n\nTake a quiz to see your progress!\nType: quiz [subject] [topic]"
+                except Exception as e:
+                    return "❌ Couldn't fetch your progress right now. Try again later."
+            else:
+                return "❌ Please complete registration to view reports."
+        
+        # Help command
+        elif message_lower in ["help", "commands"]:
+            return """🤖 **EduAgent WhatsApp Commands**
+
+📚 **Ask Questions**: Just type any question
+   Example: "What is photosynthesis?"
+
+🎯 **Generate Quiz**: quiz [subject] [topic] [difficulty]
+   Example: "quiz math algebra medium"
+
+📊 **View Progress**: "report" or "progress"
+
+💡 **Tips**:
+   • Ask specific questions for better answers
+   • Use the web platform for detailed features
+   • Check email for quiz reports
+
+🔗 Web Platform: learnmate-ai-12.preview.emergentagent.com
+
+Just ask anything! 🚀"""
+        
+        # Regular question - use RAG system + Gemini
+        else:
+            # Query the RAG system
+            answer = await query_rag_system(
+                question=message_text,
+                include_teacher_materials=True
+            )
+            
+            # Format for WhatsApp (limit length)
+            if len(answer) > 1500:
+                answer = answer[:1500] + "...\n\n📱 Login to the web platform for complete answers!"
+            
+            return f"🤖 **AI Tutor Answer**:\n\n{answer}\n\n💡 Need more help? Just ask another question!"
+    
+    except Exception as e:
+        logging.error(f"WhatsApp message processing error: {e}")
+        return "❌ Sorry, I'm having trouble right now. Please try again later or use the web platform."
 
 @api_router.get("/my-subscription")
 async def get_my_subscription(current_user: User = Depends(get_current_user)):
@@ -1764,7 +2517,7 @@ async def upload_study_material(
         pages_text = await extract_text_from_pdf(file_content)
         
         if pages_text:
-            success = await create_rag_embeddings(study_material.id, pages_text)
+            success = await create_rag_embeddings(study_material.id, pages_text, "teacher")
             if success:
                 await db.study_materials.update_one(
                     {"id": study_material.id},
@@ -1790,11 +2543,13 @@ async def get_teacher_materials(current_user: User = Depends(get_current_user)):
     
     try:
         materials = await db.study_materials.find({"uploaded_by": current_user.id}).to_list(100)
+        materials = [fix_objectids(m) for m in materials]  # 👈 convert ObjectIds
         return {"materials": materials}
         
     except Exception as e:
         logging.error(f"Get materials error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # ============= RAG SYSTEM ROUTES =============
 
@@ -1803,12 +2558,14 @@ async def rag_question(
     query_request: RAGQueryRequest,
     current_user: User = Depends(get_current_user)
 ):
-    """Ask questions based on uploaded course materials"""
+    """Ask questions based on uploaded course materials and AI knowledge"""
     try:
+        # Query RAG system with teacher materials included
         answer = await query_rag_system(
-            query_request.question,
-            query_request.subject,
-            query_request.grade_level
+            question=query_request.question,
+            subject=query_request.subject,
+            grade_level=query_request.grade_level,
+            include_teacher_materials=True
         )
         
         # Save question for tracking
@@ -1817,7 +2574,7 @@ async def rag_question(
             question=query_request.question,
             subject=query_request.subject or "General",
             answer=answer,
-            answered_by="RAG_AI"
+            answered_by="ENHANCED_RAG_AI"
         )
         
         await db.questions.insert_one(question_record.dict())
@@ -1825,12 +2582,43 @@ async def rag_question(
         return {
             "question": query_request.question,
             "answer": answer,
-            "source": "course_materials",
+            "source": "course_materials_and_ai",
             "answered_at": datetime.utcnow().isoformat()
         }
         
     except Exception as e:
         logging.error(f"RAG question error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/materials/available")
+async def get_available_materials(current_user: User = Depends(get_current_user)):
+    """Get available study materials for students"""
+    try:
+        # Get both teacher and student materials
+        teacher_materials = await db.study_materials.find({"is_processed": True}).to_list(100)
+        
+        # If student, also get their personal PDFs
+        student_pdfs = []
+        if current_user.role == "student":
+            student_pdfs = await db.student_pdfs.find({"student_id": current_user.id}).to_list(50)
+        
+        # Clean ObjectIds
+        for material in teacher_materials:
+            if "_id" in material:
+                del material["_id"]
+        
+        for pdf in student_pdfs:
+            if "_id" in pdf:
+                del pdf["_id"]
+        
+        return {
+            "teacher_materials": teacher_materials,
+            "my_pdfs": student_pdfs,
+            "total_materials": len(teacher_materials) + len(student_pdfs)
+        }
+        
+    except Exception as e:
+        logging.error(f"Get available materials error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/materials/available")
@@ -1959,6 +2747,347 @@ async def summarize_note(
         
     except Exception as e:
         logging.error(f"Note summarization error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============= DYNAMIC QUIZ ROUTES =============
+
+@api_router.post("/quiz/generate-dynamic")
+async def create_dynamic_quiz(
+    quiz_request: DynamicQuizRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Generate dynamic quiz based on user inputs"""
+    try:
+        # Generate quiz using Gemini
+        quiz_data = await generate_dynamic_quiz(quiz_request)
+        
+        # Save quiz to database (optional, for tracking)
+        quiz_record = {
+            "id": quiz_data["id"],
+            "title": quiz_data["quiz_title"],
+            "subject": quiz_data["subject"],
+            "topic": quiz_data["topic"],
+            "difficulty": quiz_data["difficulty"],
+            "grade_level": quiz_data["grade_level"],
+            "questions": quiz_data["questions"],
+            "created_by": current_user.id,
+            "created_at": datetime.utcnow(),
+            "quiz_type": "dynamic"
+        }
+        
+        await db.dynamic_quizzes.insert_one(quiz_record)
+        
+        return {
+            "success": True,
+            "quiz": quiz_data,
+            "message": f"Dynamic quiz generated with {len(quiz_data['questions'])} questions"
+        }
+        
+    except Exception as e:
+        logging.error(f"Dynamic quiz creation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/quiz/submit-dynamic/{quiz_id}")
+async def submit_dynamic_quiz(
+    quiz_id: str,
+    student_answers: Dict[str, str],
+    current_user: User = Depends(get_current_user)
+):
+    """Submit dynamic quiz and get AI evaluation with email report"""
+    try:
+        # Get quiz data
+        quiz_record = await db.dynamic_quizzes.find_one({"id": quiz_id})
+        if not quiz_record:
+            raise HTTPException(status_code=404, detail="Quiz not found")
+        
+        # Clean ObjectId from quiz record
+        if "_id" in quiz_record:
+            del quiz_record["_id"]
+        
+        # Evaluate with Gemini AI
+        evaluation = await evaluate_quiz_with_gemini(
+            quiz_record, 
+            student_answers, 
+            current_user.name
+        )
+        evaluation.student_id = current_user.id
+        
+        # Save evaluation to database
+        eval_record = evaluation.dict()
+        eval_record["quiz_id"] = quiz_id
+        eval_record["created_at"] = datetime.utcnow()
+        
+        await db.quiz_evaluations.insert_one(eval_record)
+        
+        # Send email report if student has email
+        if hasattr(current_user, 'email') and current_user.email:
+            email_report = EmailReport(
+                recipient_email=current_user.email,
+                student_name=current_user.name,
+                quiz_title=quiz_record["title"],
+                score=evaluation.score,
+                total_questions=evaluation.total_questions,
+                percentage=evaluation.percentage,
+                evaluation_report=evaluation.evaluation_report,
+                recommendations=evaluation.recommendations
+            )
+            
+            email_sent = await send_quiz_report_email(email_report)
+            
+            return {
+                "success": True,
+                "evaluation": evaluation.dict(),
+                "email_sent": email_sent,
+                "message": "Quiz evaluated successfully" + (" and report sent to your email" if email_sent else "")
+            }
+        else:
+            return {
+                "success": True,
+                "evaluation": evaluation.dict(),
+                "email_sent": False,
+                "message": "Quiz evaluated successfully. Add email to your profile to receive reports."
+            }
+        
+    except Exception as e:
+        logging.error(f"Dynamic quiz submission error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/quiz/my-dynamic-attempts")
+async def get_my_dynamic_quiz_attempts(current_user: User = Depends(get_current_user)):
+    """Get student's dynamic quiz attempts and evaluations"""
+    try:
+        evaluations = await db.quiz_evaluations.find({"student_id": current_user.id}).sort("created_at", -1).to_list(50)
+        
+        # Clean ObjectIds
+        for eval in evaluations:
+            if "_id" in eval:
+                del eval["_id"]
+        
+        return {"evaluations": evaluations}
+        
+    except Exception as e:
+        logging.error(f"Quiz attempts retrieval error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============= STUDENT PDF UPLOAD ROUTES =============
+
+@api_router.post("/student/upload-pdf")
+async def upload_student_pdf(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """Allow students to upload their own PDFs for RAG"""
+    try:
+        if current_user.role != "student":
+            raise HTTPException(status_code=403, detail="Student access required")
+        
+        # Validate file type
+        if not file.filename.lower().endswith('.pdf'):
+            raise HTTPException(status_code=400, detail="Only PDF files are supported")
+        
+        # Read file content
+        file_content = await file.read()
+        file_size = len(file_content)
+        
+        # Generate unique ID
+        upload_id = str(uuid.uuid4())
+        
+        # Extract text from PDF
+        pages_text = await extract_text_from_pdf(file_content)
+        
+        if not pages_text:
+            raise HTTPException(status_code=400, detail="Could not extract text from PDF")
+        
+        # Store PDF record
+        pdf_record = StudentPDFUpload(
+            student_id=current_user.id,
+            filename=f"{upload_id}_{file.filename}",
+            original_filename=file.filename,
+            file_size=file_size
+        )
+        
+        await db.student_pdfs.insert_one(pdf_record.dict())
+        
+        # Create embeddings with student-specific material ID
+        material_id = f"student_{current_user.id}_{upload_id}"
+        success = await create_rag_embeddings(material_id, pages_text, "student")
+        
+        if success:
+            return {
+                "success": True,
+                "material_id": material_id,
+                "filename": file.filename,
+                "pages_processed": len(pages_text),
+                "message": "PDF uploaded and processed successfully! You can now ask questions about this document."
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to process PDF for Q&A")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Student PDF upload error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/student/my-pdfs")
+async def get_my_uploaded_pdfs(current_user: User = Depends(get_current_user)):
+    """Get student's uploaded PDFs"""
+    try:
+        if current_user.role != "student":
+            raise HTTPException(status_code=403, detail="Student access required")
+        
+        pdfs = await db.student_pdfs.find({"student_id": current_user.id}).sort("created_at", -1).to_list(50)
+        
+        # Clean ObjectIds
+        for pdf in pdfs:
+            if "_id" in pdf:
+                del pdf["_id"]
+        
+        return {"pdfs": pdfs}
+        
+    except Exception as e:
+        logging.error(f"Student PDFs retrieval error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/student/ask-my-pdf")
+async def ask_question_to_my_pdf(
+    material_id: str,
+    question: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Ask questions specifically to student's uploaded PDF"""
+    try:
+        if current_user.role != "student":
+            raise HTTPException(status_code=403, detail="Student access required")
+        
+        # Verify the material belongs to the student
+        if not material_id.startswith(f"student_{current_user.id}_"):
+            raise HTTPException(status_code=403, detail="You can only query your own uploaded documents")
+        
+        # Query RAG system with material filter
+        answer = await query_rag_system(
+            question=question,
+            material_filter=material_id
+        )
+        
+        # Save question for tracking
+        question_record = Question(
+            student_id=current_user.id,
+            question=question,
+            subject="Personal Document",
+            answer=answer,
+            answered_by="PDF_RAG_AI"
+        )
+        
+        await db.questions.insert_one(question_record.dict())
+        
+        return {
+            "question": question,
+            "answer": answer,
+            "source": "your_uploaded_document",
+            "material_id": material_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Student PDF query error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============= WHATSAPP ROUTES =============
+
+@api_router.post("/whatsapp/webhook")
+async def whatsapp_webhook(request: Request):
+    """Handle WhatsApp webhook from Twilio"""
+    try:
+        form_data = await request.form()
+        
+        # Extract Twilio webhook data
+        from_number = form_data.get('From', '')
+        message_body = form_data.get('Body', '')
+        message_sid = form_data.get('MessageSid', '')
+        
+        if not from_number or not message_body:
+            return {"status": "error", "message": "Missing required fields"}
+        
+        logging.info(f"WhatsApp message received from {from_number}: {message_body}")
+        
+        # Store incoming message
+        whatsapp_msg = WhatsAppMessage(
+            phone_number=from_number,
+            message_text=message_body,
+            message_type="incoming"
+        )
+        
+        await db.whatsapp_messages.insert_one(whatsapp_msg.dict())
+        
+        # Process message and get AI response
+        ai_response = await process_whatsapp_message(from_number, message_body)
+        
+        # Send response via WhatsApp
+        response_sent = await send_whatsapp_message(from_number, ai_response)
+        
+        # Store outgoing message
+        if response_sent:
+            response_msg = WhatsAppMessage(
+                phone_number=from_number,
+                message_text=ai_response,
+                message_type="outgoing",
+                response_sent=True
+            )
+            await db.whatsapp_messages.insert_one(response_msg.dict())
+        
+        return {"status": "success", "response_sent": response_sent}
+        
+    except Exception as e:
+        logging.error(f"WhatsApp webhook error: {e}")
+        return {"status": "error", "message": str(e)}
+
+@api_router.get("/whatsapp/users")
+async def get_whatsapp_users(current_user: User = Depends(get_current_user)):
+    """Get WhatsApp users (admin only)"""
+    try:
+        if current_user.role not in ["teacher", "admin"]:
+            raise HTTPException(status_code=403, detail="Admin or teacher access required")
+        
+        users = await db.whatsapp_users.find({}).to_list(100)
+        
+        # Clean ObjectIds
+        for user in users:
+            if "_id" in user:
+                del user["_id"]
+        
+        return {"whatsapp_users": users}
+        
+    except Exception as e:
+        logging.error(f"WhatsApp users error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/whatsapp/messages")
+async def get_whatsapp_messages(
+    phone_number: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Get WhatsApp message history"""
+    try:
+        if current_user.role not in ["teacher", "admin"]:
+            raise HTTPException(status_code=403, detail="Admin or teacher access required")
+        
+        query = {}
+        if phone_number:
+            query["phone_number"] = phone_number
+        
+        messages = await db.whatsapp_messages.find(query).sort("created_at", -1).to_list(100)
+        
+        # Clean ObjectIds
+        for msg in messages:
+            if "_id" in msg:
+                del msg["_id"]
+        
+        return {"messages": messages}
+        
+    except Exception as e:
+        logging.error(f"WhatsApp messages error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============= QUIZ ANALYSIS ROUTES =============
@@ -2211,7 +3340,7 @@ async def get_linked_students(current_user: User = Depends(get_current_user)):
 
 @api_router.get("/")
 async def root():
-    return {"message": "EduAgent API - AI Powered Educational Platform with Payment Gateway"}
+    return {"message": "EduMate API - AI Powered Educational Platform with Payment Gateway"}
 
 @api_router.get("/subjects")
 async def get_subjects():
