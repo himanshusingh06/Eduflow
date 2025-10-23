@@ -129,10 +129,7 @@ RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET")
 CALLBACK_BASE_URL = os.environ.get("CALLBACK_BASE_URL")
 
 # Create the main app
-app = FastAPI(title="EduAgent - AI Powered Educational Platform")
 app = FastAPI(title="EduAgent - AI Powered Educational Platform",docs_url="/api/docs",redoc_url="/api/redoc",openapi_url="/api/openapi.json")
-# Create a router with the /api prefix
-api_router = APIRouter(prefix="/api")
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
