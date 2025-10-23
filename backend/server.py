@@ -25,9 +25,18 @@ from email import encoders
 from pinecone import Pinecone, ServerlessSpec
 from twilio.rest import Client as TwilioClient
 import json
-
+from fastapi import APIRouter, HTTPException, status, Depends, Request
+from pydantic import BaseModel, EmailStr
+from datetime import datetime, timedelta
+from jose import jwt, JWTError
+import secrets
+import hashlib
+from motor.motor_asyncio import AsyncIOMotorClient
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+# Load environment variables
+
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -43,7 +52,7 @@ JWT_SECRET = os.environ.get("JWT_SECRET_KEY")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_TIME = timedelta(days=7)
 PASSWORD_SALT = "eduagent_salt_2024"
-
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://edumate.shiyaai.com/")
 # AI Integration
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -62,6 +71,13 @@ TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
 TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER")
 WHATSAPP_WEBHOOK_URL = os.environ.get("WHATSAPP_WEBHOOK_URL")
+# Replace with your real secret
+RESET_SECRET_KEY = "SUPER_SECRET_KEY_FOR_PASSWORD_RESET"
+ALGORITHM = "HS256"
+RESET_TOKEN_EXPIRE_MINUTES = 15
+# email verification config
+EMAIL_SECRET_KEY = "your-very-secret-verification-key"
+EMAIL_TOKEN_EXPIRE_MINUTES = 30  # verification link expires in 30 mins
 
 # Configure Gemini
 genai.configure(api_key=GEMINI_API_KEY)
@@ -114,7 +130,9 @@ CALLBACK_BASE_URL = os.environ.get("CALLBACK_BASE_URL")
 
 # Create the main app
 app = FastAPI(title="EduAgent - AI Powered Educational Platform")
-
+app = FastAPI(title="EduAgent - AI Powered Educational Platform",docs_url="/api/docs",redoc_url="/api/redoc",openapi_url="/api/openapi.json")
+# Create a router with the /api prefix
+api_router = APIRouter(prefix="/api")
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
@@ -142,6 +160,7 @@ class UserLogin(BaseModel):
 class User(UserBase):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    is_verified: bool = False
     is_active: bool = True
     parent_id: Optional[str] = None  # For students linked to parents
     students: List[str] = []  # For parents linked to students
@@ -442,12 +461,139 @@ class WhatsAppUser(BaseModel):
     registered: bool = False
     last_activity: datetime = Field(default_factory=datetime.utcnow)
 
+
+
+# ======== Schemas ========
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+# ======== Utils ========
+def generate_reset_token(email: str):
+    expire = datetime.utcnow() + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES)
+    payload = {"sub": email, "exp": expire}
+    return jwt.encode(payload, RESET_SECRET_KEY, algorithm=ALGORITHM)
+
+def verify_reset_token(token: str):
+    try:
+        payload = jwt.decode(token, RESET_SECRET_KEY, algorithms=[ALGORITHM])
+        return payload.get("sub")
+    except JWTError:
+        return None
+
+def hash_password(password: str):
+    return hashlib.sha256(password.encode()).hexdigest()
+
+import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+
+async def send_reset_email(email: str, reset_link: str):
+    """Send a password reset email via Gmail SMTP."""
+    try:
+        # Email content
+        subject = "Password Reset Request"
+        body = f"""
+        <html>
+            <body>
+                <p>Hi,</p>
+                <p>We received a request to reset your password. Click the link below to reset it:</p>
+                <p><a href="{reset_link}">Reset Password</a></p>
+                <p>This link will expire in 15 minutes.</p>
+                <br>
+                <p>If you didn't request this, please ignore this email.</p>
+                <p>— Your App Team</p>
+            </body>
+        </html>
+        """
+
+        # MIME setup
+        message = MIMEMultipart("alternative")
+        message["Subject"] = subject
+        message["From"] = EMAIL_USER
+        message["To"] = email
+        message.attach(MIMEText(body, "html"))
+
+        # Connect to Gmail SMTP
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()  # Secure connection
+            server.login(EMAIL_USER, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_USER, email, message.as_string())
+
+        print(f"✅ Password reset email sent to {email}")
+
+    except Exception as e:
+        print(f"❌ Error sending email: {e}")
+        raise e
+
+# ======== Routes ========
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(data: ForgotPasswordRequest):
+    """Request password reset link"""
+    user = await db.users.find_one({"email": data.email})
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account found with this email"
+        )
+    
+    # Generate reset token
+    token = generate_reset_token(data.email)
+    reset_link = f"{FRONTEND_URL}verify-reset-token/{token}"
+
+    # Store token in user doc (optional)
+    await db.users.update_one(
+        {"email": data.email},
+        {"$set": {"reset_token": token, "reset_requested_at": datetime.utcnow()}}
+    )
+
+    # Send reset email
+    try:
+        await send_reset_email(data.email, reset_link)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error sending email: {str(e)}")
+    
+    return {"message": "Password reset link has been sent to your email"}
+
+
+@api_router.get("/auth/verify-reset-token/{token}")
+async def verify_token(token: str):
+    """Verify if reset token is valid"""
+    email = verify_reset_token(token)
+    if not email:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    return {"message": "Token valid", "email": email}
+
+
+@api_router.post("/auth/reset-password")
+async def reset_password(data: ResetPasswordRequest):
+    """Reset the password using the token"""
+    email = verify_reset_token(data.token)
+    if not email:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    # Hash the new password
+    new_hashed = hash_password(data.new_password)
+
+    # Update in DB
+    result = await db.users.update_one(
+        {"email": email},
+        {"$set": {"password": new_hashed}, "$unset": {"reset_token": ""}}
+    )
+
+    if result.modified_count == 0:
+        raise HTTPException(status_code=400, detail="Unable to reset password")
+    
+    return {"message": "Password has been reset successfully"}
 # ============= UTILITY FUNCTIONS =============
 
-def hash_password(password: str) -> str:
-    # Using SHA256 with salt for password hashing
-    salted_password = password + PASSWORD_SALT
-    return hashlib.sha256(salted_password.encode('utf-8')).hexdigest()
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     # Verify password by hashing the plain password and comparing
@@ -790,14 +936,70 @@ Keep it encouraging and constructive for parents."""
 
 # ============= AUTH ROUTES =============
 
-@api_router.post("/auth/register", response_model=TokenResponse)
+
+# === TOKEN UTILS ===
+def generate_verification_token(email: str):
+    """Generate a time-limited JWT token for email verification."""
+    expire = datetime.utcnow() + timedelta(minutes=EMAIL_TOKEN_EXPIRE_MINUTES)
+    payload = {"sub": email, "exp": expire}
+    token = jwt.encode(payload, EMAIL_SECRET_KEY, algorithm=ALGORITHM)
+    return token
+
+
+def verify_verification_token(token: str):
+    """Decode and verify the verification JWT."""
+    try:
+        payload = jwt.decode(token, EMAIL_SECRET_KEY, algorithms=[ALGORITHM])
+        return payload.get("sub")
+    except JWTError:
+        return None
+
+
+
+
+# === EMAIL UTILS ===
+async def send_verification_email(recipient_email: str, verification_link: str):
+    """Send email verification link via Gmail SMTP."""
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Verify Your Email Address"
+        msg["From"] = EMAIL_USER
+        msg["To"] = recipient_email
+
+        html_content = f"""
+        <html>
+        <body>
+            <h2>Welcome to Our App!</h2>
+            <p>Click the button below to verify your email address:</p>
+            <a href="{verification_link}"
+               style="background-color:#4CAF50;color:white;
+                      padding:10px 15px;text-decoration:none;
+                      border-radius:5px;">Verify Email</a>
+            <p>This link will expire in 30 minutes.</p>
+            <br>
+            <p>If you didn't sign up, please ignore this email.</p>
+        </body>
+        </html>
+        """
+
+        msg.attach(MIMEText(html_content, "html"))
+
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_USER, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_USER, recipient_email, msg.as_string())
+
+        print(f"✅ Verification email sent to {recipient_email}")
+
+    except Exception as e:
+        print(f"❌ Failed to send verification email: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send verification email")
+@api_router.post("/auth/register")
 async def register(user_data: UserCreate):
-    # Check if user exists
     existing_user = await db.users.find_one({"email": user_data.email})
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    # Create user
+    if existing_user and existing_user.get("is_verified"):
+        raise HTTPException(status_code=400, detail="Email already registered and verified")
+
     user = User(
         **user_data.dict(exclude={"password"}),
         id=str(uuid.uuid4())
@@ -806,39 +1008,81 @@ async def register(user_data: UserCreate):
     # Hash password and store
     user_dict = user.dict()
     user_dict["password"] = hash_password(user_data.password)
-    
-    await db.users.insert_one(user_dict)
-    
-    # Create access token
-    access_token = create_access_token({"sub": user.id})
-    
+
+    # Insert or update
+    if existing_user:
+        await db.users.update_one({"email": user_data.email}, {"$set": user_dict})
+    else:
+        await db.users.insert_one(user_dict)
+
+    # Generate JWT verification token
+    token = generate_verification_token(user_data.email)
+    verification_link = f"http://{FRONTEND_URL}verify-email/{token}"
+
+    # Send verification email
+    await send_verification_email(user_data.email, verification_link)
+
+    return {"message": "Verification email sent."}
+
+@api_router.get("/auth/verify-email/{token}")
+async def verify_email(token: str):
+    email = verify_verification_token(token)
+    if not email:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification token")
+
+    user_doc = await db.users.find_one({"email": email})
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user_doc.get("is_verified"):
+        return {"message": "User already verified"}
+
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"is_verified": True, "verified_at": datetime.utcnow()}}
+    )
+
+    return {"message": "Email verified successfully"}
+
+@api_router.post("/auth/resend-verification")
+async def resend_verification(email: EmailStr):
+    user_doc = await db.users.find_one({"email": email})
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user_doc.get("is_verified"):
+        return {"message": "User already verified"}
+
+    # Generate new token
+    token = generate_verification_token(email)
+    verification_link = f"http://{FRONTEND_URL}verify-email/{token}"
+
+    await send_verification_email(email, verification_link)
+
+    return {"message": "New verification email sent"}
+
+
+@api_router.post("/auth/login", response_model=TokenResponse)
+async def login(login_data: UserLogin):
+    user_doc = await db.users.find_one({"email": login_data.email})
+    if not user_doc:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    if not user_doc.get("is_verified"):
+        raise HTTPException(status_code=403, detail="Please verify your email before logging in")
+
+    if not verify_password(login_data.password, user_doc["password"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    access_token = create_access_token({"sub": user_doc["id"]})
+    user = User(**{k: v for k, v in user_doc.items() if k != "password"})
+
     return TokenResponse(
         access_token=access_token,
         token_type="bearer",
         user=user
     )
 
-@api_router.post("/auth/login", response_model=TokenResponse)
-async def login(login_data: UserLogin):
-    # Find user
-    user_doc = await db.users.find_one({"email": login_data.email})
-    if not user_doc:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    # Verify password
-    if not verify_password(login_data.password, user_doc["password"]):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    # Create token
-    access_token = create_access_token({"sub": user_doc["id"]})
-    
-    user = User(**{k: v for k, v in user_doc.items() if k != "password"})
-    
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        user=user
-    )
 
 @api_router.get("/auth/me", response_model=User)
 async def get_current_user_info(current_user: User = Depends(get_current_user)):

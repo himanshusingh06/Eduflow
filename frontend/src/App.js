@@ -1,5 +1,6 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useNavigate } from "react-router-dom";
 import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
 import edumatelogo from "./assets/edumale_logo.jpg" 
@@ -43,6 +44,7 @@ const AuthProvider = ({ children }) => {
     }
   };
 
+
   const login = (userData, userToken) => {
     setUser(userData);
     setToken(userToken);
@@ -64,33 +66,226 @@ const AuthProvider = ({ children }) => {
   );
 };
 
-// Login Component
+// =======================
+// LOGIN + FORGET FLOW UI
+// =======================
+
+
+
+
 const Login = () => {
   const [isLogin, setIsLogin] = useState(true);
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    name: '',
-    role: 'student'
-  });
-  const { login } = useAuth();
+  const [isForgot, setIsForgot] = useState(false);
+  const [isReset, setIsReset] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
+  const [resendTimer, setResendTimer] = useState(0);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+    name: "",
+    role: "student",
+  });
+
+  const [resetData, setResetData] = useState({
+    email: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+
+  const { login } = useAuth();
+  const navigate = useNavigate();
+
+  // -----------------------
+  // HANDLE TOKEN FROM URL
+  // -----------------------
+  useEffect(() => {
+    const path = window.location.pathname;
+    const parts = path.split("/");
+
+    // detect email verification
+    if (path.includes("/verify-email/")) {
+      const token = parts.pop();
+      verifyEmailToken(token);
+    }
+
+    // detect reset password token
+    else if (path.includes("/verify-reset-token/")) {
+      const token = parts.pop();
+      verifyResetToken(token);
+    }
+  }, []);
+
+  // ✅ Verify Email Token
+  const verifyEmailToken = async (token) => {
+    setIsVerifying(true);
     try {
-      const endpoint = isLogin ? '/auth/login' : '/auth/register';
-      const response = await axios.post(endpoint, formData);
-      
-      login(response.data.user, response.data.access_token);
-      toast.success(isLogin ? 'Logged in successfully!' : 'Account created successfully!');
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Authentication failed');
+      const res = await axios.get(`/auth/verify-email/${token}`);
+      toast.success("Email verified successfully! Redirecting...");
+      login(res.data.user, res.data.access_token);
+      setTimeout(() => navigate("/dashboard"), 2000);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Invalid or expired link");
+    } finally {
+      setIsVerifying(false);
+      window.history.replaceState({}, document.title, "/");
     }
   };
 
+  // ✅ Verify Reset Token
+  const verifyResetToken = async (token) => {
+    setIsVerifying(true);
+    try {
+      const res = await axios.get(`/auth/verify-reset-token/${token}`);
+      toast.success(res.data.message || "Token verified, you can reset password");
+      setIsReset(true);
+      window.history.replaceState({}, document.title, `/reset/${token}`);
+      localStorage.setItem("resetToken", token);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Invalid or expired reset link");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // -----------------------
+  // LOGIN / REGISTER
+  // -----------------------
+  const handleSubmit = async (e) => {
+  e.preventDefault();
+  setIsBusy(true);
+
+  try {
+    if (isLogin) {
+      const res = await axios.post("/auth/login", formData);
+      login(res.data.user, res.data.access_token);
+      toast.success("Logged in successfully!");
+      navigate("/dashboard");
+    } else {
+      const res = await axios.post("/auth/register", formData);
+      console.log("Register response:", res); // for debugging
+      setVerificationEmail(formData.email);
+      setEmailSent(true);
+      toast.success(res.data.message || "Verification email sent! Please check your inbox.");
+      startResendTimer();
+    }
+  } catch (err) {
+    console.error("Axios error:", err.response);
+    toast.error(err.response?.data?.detail || "Authentication failed");
+  } finally {
+    setIsBusy(false);
+  }
+};
+
+
+  // -----------------------
+  // RESEND VERIFICATION
+  // -----------------------
+  const handleResendVerification = async () => {
+    if (resendTimer > 0) return;
+    setIsBusy(true);
+    try {
+      await axios.post("/auth/resend-verification", { email: verificationEmail });
+      toast.success("Verification email resent!");
+      startResendTimer();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Error resending email");
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  // -----------------------
+  // FORGOT PASSWORD
+  // -----------------------
+  const handleForgotSubmit = async (e) => {
+    e.preventDefault();
+    setIsBusy(true);
+    try {
+      await axios.post("/auth/forgot-password", { email: resetData.email });
+      setEmailSent(true);
+      toast.success("Password reset link sent to your email");
+      startResendTimer();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Error sending reset link");
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  // -----------------------
+  // RESET PASSWORD
+  // -----------------------
+  const handleResetSubmit = async (e) => {
+    e.preventDefault();
+    setIsBusy(true);
+    const token =
+      localStorage.getItem("resetToken") ||
+      window.location.pathname.split("/").pop();
+
+    if (!token) {
+      toast.error("Invalid or missing reset token");
+      setIsBusy(false);
+      return;
+    }
+    if (resetData.newPassword !== resetData.confirmPassword) {
+      toast.error("Passwords do not match");
+      setIsBusy(false);
+      return;
+    }
+
+    try {
+      await axios.post("/auth/reset-password", {
+        token,
+        new_password: resetData.newPassword,
+      });
+      toast.success("Password reset successful! You can now log in.");
+      setIsReset(false);
+      setIsLogin(true);
+      window.history.replaceState({}, document.title, "/");
+      localStorage.removeItem("resetToken");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Error resetting password");
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  // -----------------------
+  // TIMER (60s)
+  // -----------------------
+  const startResendTimer = () => {
+    setResendTimer(60);
+  };
+  useEffect(() => {
+    if (resendTimer <= 0) return;
+    const timer = setInterval(() => setResendTimer((t) => t - 1), 1000);
+    return () => clearInterval(timer);
+  }, [resendTimer]);
+
+  // -----------------------
+  // UI WHILE VERIFYING
+  // -----------------------
+  if (isVerifying) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50">
+        <div className="text-center text-lg font-semibold text-gray-700 animate-pulse">
+          Verifying your link, please wait...
+        </div>
+      </div>
+    );
+  }
+
+  // -----------------------
+  // MAIN UI
+  // -----------------------
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md backdrop-blur-sm bg-opacity-95">
+        {/* LOGO */}
         <div className="text-center mb-8">
           <div className="w-364 h-20 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center mx-auto mb-4 overflow-hidden">
             <img
@@ -99,77 +294,226 @@ const Login = () => {
               className="object-cover w-full h-full scale-140 rounded-md"
             />
           </div>
-
           <p className="text-gray-600">AI-Powered Learning Platform</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {!isLogin && (
-            <>
-              <input
-                type="text"
-                placeholder="Full Name"
-                value={formData.name}
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-                required={!isLogin}
-                data-testid="register-name-input"
-              />
-              <select
-                value={formData.role}
-                onChange={(e) => setFormData({...formData, role: e.target.value})}
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-                data-testid="register-role-select"
-              >
-                <option value="student">Student</option>
-                <option value="teacher">Teacher</option>
-                <option value="parent">Parent</option>
-              </select>
-            </>
-          )}
-          
-          <input
-            type="email"
-            placeholder="Email"
-            value={formData.email}
-            onChange={(e) => setFormData({...formData, email: e.target.value})}
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-            required
-            data-testid="login-email-input"
-          />
-          
-          <input
-            type="password"
-            placeholder="Password"
-            value={formData.password}
-            onChange={(e) => setFormData({...formData, password: e.target.value})}
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
-            required
-            data-testid="login-password-input"
-          />
-          
-          <button
-            type="submit"
-            className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-3 rounded-xl font-semibold hover:from-emerald-600 hover:to-teal-700 transform hover:scale-[1.02] transition-all duration-200 shadow-lg"
-            data-testid="login-submit-button"
-          >
-            {isLogin ? 'Sign In' : 'Create Account'}
-          </button>
-        </form>
+        {/* LOGIN / REGISTER */}
+        {!isForgot && !isReset && !emailSent && (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {!isLogin && (
+              <>
+                <input
+                  type="text"
+                  placeholder="Full Name"
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                  required
+                />
+                <select
+                  value={formData.role}
+                  onChange={(e) =>
+                    setFormData({ ...formData, role: e.target.value })
+                  }
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                >
+                  <option value="student">Student</option>
+                  <option value="teacher">Teacher</option>
+                  <option value="parent">Parent</option>
+                </select>
+              </>
+            )}
 
-        <div className="text-center mt-6">
-          <button
-            onClick={() => setIsLogin(!isLogin)}
-            className="text-emerald-600 hover:text-emerald-700 font-medium transition-colors"
-            data-testid="auth-toggle-button"
-          >
-            {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
-          </button>
-        </div>
+            <input
+              type="email"
+              placeholder="Email"
+              value={formData.email}
+              onChange={(e) =>
+                setFormData({ ...formData, email: e.target.value })
+              }
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              required
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={formData.password}
+              onChange={(e) =>
+                setFormData({ ...formData, password: e.target.value })
+              }
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              required
+            />
+
+            <button
+              type="submit"
+              disabled={isBusy}
+              className={`w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-3 rounded-xl font-semibold transform transition-all duration-200 shadow-lg ${
+                isBusy
+                  ? "opacity-70 cursor-not-allowed"
+                  : "hover:from-emerald-600 hover:to-teal-700 hover:scale-[1.02]"
+              }`}
+            >
+              {isBusy
+                ? "Please wait..."
+                : isLogin
+                ? "Sign In"
+                : "Create Account"}
+            </button>
+
+            {isLogin && (
+              <div className="text-center mt-3">
+                <button
+                  type="button"
+                  onClick={() => setIsForgot(true)}
+                  className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
+                >
+                  Forgot Password?
+                </button>
+              </div>
+            )}
+          </form>
+        )}
+
+        {/* EMAIL SENT CONFIRMATION */}
+        {emailSent && !isReset && (
+          <div className="text-center space-y-4">
+            <h2 className="text-xl font-semibold">
+              {isForgot ? "Check your email" : "Verify your email"}
+            </h2>
+            <p className="text-gray-600">
+              {isForgot
+                ? `A password reset link has been sent to ${resetData.email}.`
+                : `A verification link has been sent to ${verificationEmail}.`}
+            </p>
+            <button
+              onClick={handleResendVerification}
+              disabled={isBusy || resendTimer > 0}
+              className={`text-emerald-600 font-medium hover:text-emerald-700 ${
+                resendTimer > 0 ? "opacity-60 cursor-not-allowed" : ""
+              }`}
+            >
+              {resendTimer > 0
+                ? `Resend in ${resendTimer}s`
+                : "Resend Email"}
+            </button>
+            <button
+              onClick={() => {
+                setEmailSent(false);
+                setIsLogin(true);
+                setIsForgot(false);
+              }}
+              className="block mx-auto text-gray-600 hover:text-emerald-700"
+            >
+              Back to Login
+            </button>
+          </div>
+        )}
+
+        {/* FORGOT PASSWORD */}
+        {isForgot && !emailSent && (
+          <form onSubmit={handleForgotSubmit} className="space-y-4">
+            <h2 className="text-xl font-semibold text-center">
+              Reset your password
+            </h2>
+            <input
+              type="email"
+              placeholder="Enter your registered email"
+              value={resetData.email}
+              onChange={(e) =>
+                setResetData({ ...resetData, email: e.target.value })
+              }
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              required
+            />
+            <button
+              type="submit"
+              disabled={isBusy}
+              className={`w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-3 rounded-xl font-semibold transform transition-all duration-200 shadow-lg ${
+                isBusy
+                  ? "opacity-70 cursor-not-allowed"
+                  : "hover:from-emerald-600 hover:to-teal-700 hover:scale-[1.02]"
+              }`}
+            >
+              {isBusy ? "Sending..." : "Send Reset Link"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsLogin(true)}
+              className="text-sm text-gray-600 hover:text-emerald-700 text-center block mx-auto"
+            >
+              Back to Login
+            </button>
+          </form>
+        )}
+
+        {/* RESET PASSWORD */}
+        {isReset && (
+          <form onSubmit={handleResetSubmit} className="space-y-4">
+            <h2 className="text-xl font-semibold text-center">
+              Create New Password
+            </h2>
+            <input
+              type="password"
+              placeholder="New Password"
+              value={resetData.newPassword}
+              onChange={(e) =>
+                setResetData({ ...resetData, newPassword: e.target.value })
+              }
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              required
+            />
+            <input
+              type="password"
+              placeholder="Confirm New Password"
+              value={resetData.confirmPassword}
+              onChange={(e) =>
+                setResetData({
+                  ...resetData,
+                  confirmPassword: e.target.value,
+                })
+              }
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              required
+            />
+            <button
+              type="submit"
+              disabled={isBusy}
+              className={`w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-3 rounded-xl font-semibold transform transition-all duration-200 shadow-lg ${
+                isBusy
+                  ? "opacity-70 cursor-not-allowed"
+                  : "hover:from-emerald-600 hover:to-teal-700 hover:scale-[1.02]"
+              }`}
+            >
+              {isBusy ? "Resetting..." : "Reset Password"}
+            </button>
+          </form>
+        )}
+
+        {/* TOGGLE SIGNUP/LOGIN */}
+        {!isForgot && !isReset && !emailSent && (
+          <div className="text-center mt-6">
+            <button
+              onClick={() => setIsLogin(!isLogin)}
+              className="text-emerald-600 hover:text-emerald-700 font-medium transition-colors"
+            >
+              {isLogin
+                ? "Don't have an account? Sign up"
+                : "Already have an account? Sign in"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
 };
+
+
+
+
+
 
 // Sidebar Component
 const Sidebar = ({ activeTab, setActiveTab, user, isMobileOpen, setIsMobileOpen }) => {
