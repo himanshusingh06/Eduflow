@@ -128,9 +128,7 @@ RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET")
 CALLBACK_BASE_URL = os.environ.get("CALLBACK_BASE_URL")
 
 # Create the main app
-app = FastAPI(title="Edumate - AI Powered Educational Platform",docs_url="/api/docs",redoc_url="/api/redoc",openapi_url="/api/openapi.json")
-# Create a router with the /api prefix
-api_router = APIRouter(prefix="/api")
+app = FastAPI(title="EduAgent - AI Powered Educational Platform",docs_url="/api/docs",redoc_url="/api/redoc",openapi_url="/api/openapi.json")
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
@@ -497,10 +495,10 @@ async def send_reset_email(email: str, reset_link: str):
             <body>
                 <p>Hi,</p>
                 <p>We received a request to reset your password. Click the link below to reset it:</p>
-                <a href="{{reset_link}}"
+                 <a href="{reset_link}"
                style="background-color:#4CAF50;color:white;
                       padding:10px 15px;text-decoration:none;
-                      border-radius:5px;">{reset_link}</a>
+                      border-radius:5px;">Reset Link</a>
                 <p>This link will expire in 15 minutes.</p>
                 <br>
                 <p>If you didn't request this, please ignore this email.</p>
@@ -975,6 +973,7 @@ async def send_verification_email(recipient_email: str, verification_link: str):
             <p>This link will expire in 30 minutes.</p>
             <br>
             <p>If you didn't sign up, please ignore this email.</p>
+            <p>Edumate Team</p>
         </body>
         </html>
         """
