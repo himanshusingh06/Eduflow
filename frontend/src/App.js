@@ -2580,6 +2580,11 @@ const FileUpload = () => {
       toast.error('Please upload only PDF files');
       return;
     }
+  const fileSizeMB = file.size / (1024 * 1024);
+  if (fileSizeMB > 5) {
+    toast.error('File size must be less than 5 MB');
+    return;
+  }
 
     setUploading(true);
     try {
@@ -2593,7 +2598,10 @@ const FileUpload = () => {
         headers: { 
           'Content-Type': 'multipart/form-data',
           ...axios.defaults.headers.common 
-        }
+        },
+	maxContentLength: 10 * 1024 * 1024, // 10 MB
+        maxBodyLength: 10 * 1024 * 1024,
+
       };
       
       const response = await axios.post('/teacher/upload-material', formData, config);

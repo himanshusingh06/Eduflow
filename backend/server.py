@@ -500,11 +500,14 @@ async def send_reset_email(email: str, reset_link: str):
             <body>
                 <p>Hi,</p>
                 <p>We received a request to reset your password. Click the link below to reset it:</p>
-                <p><a href="{reset_link}">Reset Password</a></p>
+                 <a href="{reset_link}"
+               style="background-color:#4CAF50;color:white;
+                      padding:10px 15px;text-decoration:none;
+                      border-radius:5px;">Reset Link</a>
                 <p>This link will expire in 15 minutes.</p>
                 <br>
                 <p>If you didn't request this, please ignore this email.</p>
-                <p>— Your App Team</p>
+                <p>— Edumate Team</p>
             </body>
         </html>
         """
@@ -975,6 +978,7 @@ async def send_verification_email(recipient_email: str, verification_link: str):
             <p>This link will expire in 30 minutes.</p>
             <br>
             <p>If you didn't sign up, please ignore this email.</p>
+            <p>Edumate Team</p>
         </body>
         </html>
         """
@@ -1014,7 +1018,7 @@ async def register(user_data: UserCreate):
 
     # Generate JWT verification token
     token = generate_verification_token(user_data.email)
-    verification_link = f"http://{FRONTEND_URL}verify-email/{token}"
+    verification_link = f"{FRONTEND_URL}verify-email/{token}"
 
     # Send verification email
     await send_verification_email(user_data.email, verification_link)
@@ -1052,7 +1056,7 @@ async def resend_verification(email: EmailStr):
 
     # Generate new token
     token = generate_verification_token(email)
-    verification_link = f"http://{FRONTEND_URL}verify-email/{token}"
+    verification_link = f"{FRONTEND_URL}verify-email/{token}"
 
     await send_verification_email(email, verification_link)
 
