@@ -388,11 +388,7 @@ const Login = () => {
                 ? `A password reset link has been sent to ${resetData.email}.`
                 : `A verification link has been sent to ${verificationEmail}.`}
             </p>
-<<<<<<< HEAD
             {/* <button
-=======
-            <button
->>>>>>> 1e2fa59a387780fd9b744c74ecd9432c3cb6d41e
               onClick={handleResendVerification}
               disabled={isBusy || resendTimer > 0}
               className={`text-emerald-600 font-medium hover:text-emerald-700 ${
@@ -402,11 +398,7 @@ const Login = () => {
               {resendTimer > 0
                 ? `Resend in ${resendTimer}s`
                 : "Resend Email"}
-<<<<<<< HEAD
             </button> */}
-=======
-            </button>
->>>>>>> 1e2fa59a387780fd9b744c74ecd9432c3cb6d41e
             <button
               onClick={() => {
                 setEmailSent(false);
