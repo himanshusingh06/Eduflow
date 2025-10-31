@@ -388,7 +388,7 @@ const Login = () => {
                 ? `A password reset link has been sent to ${resetData.email}.`
                 : `A verification link has been sent to ${verificationEmail}.`}
             </p>
-            <button
+            {/* <button
               onClick={handleResendVerification}
               disabled={isBusy || resendTimer > 0}
               className={`text-emerald-600 font-medium hover:text-emerald-700 ${
@@ -398,7 +398,7 @@ const Login = () => {
               {resendTimer > 0
                 ? `Resend in ${resendTimer}s`
                 : "Resend Email"}
-            </button>
+            </button> */}
             <button
               onClick={() => {
                 setEmailSent(false);
@@ -1059,10 +1059,30 @@ const StudyContent = () => {
             className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
           >
             <option value="">All Subjects</option>
-            <option value="Mathematics">Mathematics</option>
-            <option value="Science">Science</option>
+            <option value="Accountancy">Accountancy</option>
+            <option value="Arts">Arts</option>
+            <option value="Bangla">Bangla</option>
+            <option value="Biology">Biology</option>
+            <option value="Business Studies">Business Studies</option>
+            <option value="C++">C++</option>
+            <option value="Chemistry">Chemistry</option>
+            <option value="Civics">Civics</option>
             <option value="English">English</option>
             <option value="History">History</option>
+            <option value="Indian Economics">Indian Economics</option>
+            <option value="Information Practices">Information Practices</option>
+            <option value="Macro Economics">Macro Economics</option>
+            <option value="Mathematics">Mathematics</option>
+            <option value="Micro Economics">Micro Economics</option>
+            <option value="Notes">Notes</option>
+            <option value="Physics">Physics</option>
+            <option value="Political Science">Political Science</option>
+            <option value="Psychology">Psychology</option>
+            <option value="Sanskrit">Sanskrit</option>
+            <option value="Science">Science</option>
+            <option value="Social Studies">Social Studies</option>
+            <option value="Sociology">Sociology</option>
+
           </select>
           <select
             value={filters.grade_level}
@@ -1075,6 +1095,9 @@ const StudyContent = () => {
             <option value="Grade 8">Grade 8</option>
             <option value="Grade 9">Grade 9</option>
             <option value="Grade 10">Grade 10</option>
+            <option value="Grade 11">Grade 11</option>
+            <option value="Grade 12">Grade 12</option>
+            <option value="University Level">University Level</option>
           </select>
         </div>
       </div>
@@ -1528,14 +1551,30 @@ const DynamicQuiz = () => {
                 onChange={(e) => setQuizRequest({...quizRequest, subject: e.target.value})}
                 className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
               >
-                <option value="Mathematics">Mathematics</option>
-                <option value="Science">Science</option>
+                <option value="Accountancy">Accountancy</option>
+                <option value="Arts">Arts</option>
+                <option value="Bangla">Bangla</option>
+                <option value="Biology">Biology</option>
+                <option value="Business Studies">Business Studies</option>
+                <option value="C++">C++</option>
+                <option value="Chemistry">Chemistry</option>
+                <option value="Civics">Civics</option>
                 <option value="English">English</option>
                 <option value="History">History</option>
-                <option value="Geography">Geography</option>
+                <option value="Indian Economics">Indian Economics</option>
+                <option value="Information Practices">Information Practices</option>
+                <option value="Macro Economics">Macro Economics</option>
+                <option value="Mathematics">Mathematics</option>
+                <option value="Micro Economics">Micro Economics</option>
+                <option value="Notes">Notes</option>
                 <option value="Physics">Physics</option>
-                <option value="Chemistry">Chemistry</option>
-                <option value="Biology">Biology</option>
+                <option value="Political Science">Political Science</option>
+                <option value="Psychology">Psychology</option>
+                <option value="Sanskrit">Sanskrit</option>
+                <option value="Science">Science</option>
+                <option value="Social Studies">Social Studies</option>
+                <option value="Sociology">Sociology</option>
+
               </select>
             </div>
 
@@ -1553,6 +1592,7 @@ const DynamicQuiz = () => {
                 <option value="Grade 10">Grade 10</option>
                 <option value="Grade 11">Grade 11</option>
                 <option value="Grade 12">Grade 12</option>
+                <option value="University Level">University Level</option>
               </select>
             </div>
           </div>
@@ -1925,11 +1965,30 @@ const AskAI = () => {
               onChange={(e) => setSubject(e.target.value)}
               className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
             >
-              <option value="Mathematics">Mathematics</option>
-              <option value="Science">Science</option>
+              <option value="Accountancy">Accountancy</option>
+              <option value="Arts">Arts</option>
+              <option value="Bangla">Bangla</option>
+              <option value="Biology">Biology</option>
+              <option value="Business Studies">Business Studies</option>
+              <option value="C++">C++</option>
+              <option value="Chemistry">Chemistry</option>
+              <option value="Civics">Civics</option>
               <option value="English">English</option>
               <option value="History">History</option>
-              <option value="Geography">Geography</option>
+              <option value="Indian Economics">Indian Economics</option>
+              <option value="Information Practices">Information Practices</option>
+              <option value="Macro Economics">Macro Economics</option>
+              <option value="Mathematics">Mathematics</option>
+              <option value="Micro Economics">Micro Economics</option>
+              <option value="Notes">Notes</option>
+              <option value="Physics">Physics</option>
+              <option value="Political Science">Political Science</option>
+              <option value="Psychology">Psychology</option>
+              <option value="Sanskrit">Sanskrit</option>
+              <option value="Science">Science</option>
+              <option value="Social Studies">Social Studies</option>
+              <option value="Sociology">Sociology</option>
+
             </select>
           </div>
 
@@ -1945,6 +2004,9 @@ const AskAI = () => {
               <option value="Grade 8">Grade 8</option>
               <option value="Grade 9">Grade 9</option>
               <option value="Grade 10">Grade 10</option>
+              <option value="Grade 11">Grade 11</option>
+              <option value="Grade 12">Grade 12</option>
+              <option value="University Level">University Level</option>
             </select>
           </div>
         </div>
@@ -2297,30 +2359,49 @@ const PersonalizedLearning = () => {
 };
 
 // Create Content Component (for teachers)
+
+
 const CreateContent = () => {
+  const [mode, setMode] = useState('list'); // Modes: 'list', 'create', 'view', 'edit'
+  const [contents, setContents] = useState([]);
+  const [selectedContent, setSelectedContent] = useState(null);
   const [formData, setFormData] = useState({
     title: '',
     subject: 'Mathematics',
     grade_level: 'Grade 8',
     topic: '',
-    tags: []
+    tags: [],
+    content: '' // For edit mode
   });
   const [loading, setLoading] = useState(false);
+  const [fetchLoading, setFetchLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
+  // Fetch teacher's contents on mount and after actions
+  useEffect(() => {
+    fetchContents();
+  }, []);
+
+  const fetchContents = async () => {
+    setFetchLoading(true);
+    try {
+      const response = await axios.get('/teacher/my-contents');
+      setContents(response.data);
+    } catch (error) {
+      toast.error('Failed to fetch contents');
+    } finally {
+      setFetchLoading(false);
+    }
+  };
+
+  const handleCreateSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
     try {
       await axios.post('/study/generate', formData);
       toast.success('Content generated successfully!');
-      setFormData({
-        title: '',
-        subject: 'Mathematics', 
-        grade_level: 'Grade 8',
-        topic: '',
-        tags: []
-      });
+      resetForm();
+      setMode('list');
+      fetchContents();
     } catch (error) {
       toast.error('Failed to generate content');
     } finally {
@@ -2328,42 +2409,172 @@ const CreateContent = () => {
     }
   };
 
-  return (
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await axios.put(`/teacher/update-content/${selectedContent._id}`, formData);
+      toast.success('Content updated successfully!');
+      resetForm();
+      setMode('list');
+      fetchContents();
+    } catch (error) {
+      toast.error('Failed to update content');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (contentId) => {
+    if (window.confirm('Are you sure you want to delete this content?')) {
+      try {
+        await axios.delete(`/teacher/delete-content/${contentId}`);
+        toast.success('Content deleted successfully!');
+        fetchContents();
+      } catch (error) {
+        toast.error('Failed to delete content');
+      }
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      subject: 'Mathematics',
+      grade_level: 'Grade 8',
+      topic: '',
+      tags: [],
+      content: ''
+    });
+  };
+
+  const handleView = (content) => {
+    setSelectedContent(content);
+    setMode('view');
+  };
+
+  const handleEdit = (content) => {
+    setSelectedContent(content);
+    setFormData({
+      title: content.title,
+      subject: content.subject,
+      grade_level: content.grade_level,
+      topic: '', // Topic might not be stored, or use content as topic
+      tags: content.tags || [],
+      content: content.content
+    });
+    setMode('edit');
+  };
+
+  const renderList = () => (
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">My Study Contents</h1>
+        <button
+          onClick={() => setMode('create')}
+          className="bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600"
+        >
+          Create New Content
+        </button>
+      </div>
+      {fetchLoading ? (
+        <p>Loading...</p>
+      ) : contents.length === 0 ? (
+        <p>No contents found. Create your first content!</p>
+      ) : (
+        <div className="space-y-4">
+          {contents.map((content) => (
+            <div key={content._id} className="bg-white rounded-xl p-4 shadow-sm border">
+              <h2 className="text-xl font-semibold">{content.title}</h2>
+              <p>Subject: {content.subject} | Grade: {content.grade_level}</p>
+              <p>Tags: {content.tags?.join(', ') || 'None'}</p>
+              <div className="mt-4 flex space-x-2">
+                <button
+                  onClick={() => handleView(content)}
+                  className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                >
+                  View
+                </button>
+                {/* <button
+                  onClick={() => handleEdit(content)}
+                  className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => handleDelete(content._id)}
+                  className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                >
+                  Delete
+                </button> */}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderCreateForm = () => (
     <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">Create Study Content</h1>
-      
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl p-6 shadow-sm border space-y-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">Create Study Content</h1>
+        <button
+          onClick={() => setMode('list')}
+          className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600"
+        >
+          Back to List
+        </button>
+      </div>
+      <form onSubmit={handleCreateSubmit} className="bg-white rounded-xl p-6 shadow-sm border space-y-6">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Content Title</label>
           <input
             type="text"
             value={formData.title}
-            onChange={(e) => setFormData({...formData, title: e.target.value})}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
             required
           />
         </div>
-
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
             <select
               value={formData.subject}
-              onChange={(e) => setFormData({...formData, subject: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
               className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
             >
-              <option value="Mathematics">Mathematics</option>
-              <option value="Science">Science</option>
+              <option value="Accountancy">Accountancy</option>
+              <option value="Arts">Arts</option>
+              <option value="Bangla">Bangla</option>
+              <option value="Biology">Biology</option>
+              <option value="Business Studies">Business Studies</option>
+              <option value="C++">C++</option>
+              <option value="Chemistry">Chemistry</option>
+              <option value="Civics">Civics</option>
               <option value="English">English</option>
               <option value="History">History</option>
+              <option value="Indian Economics">Indian Economics</option>
+              <option value="Information Practices">Information Practices</option>
+              <option value="Macro Economics">Macro Economics</option>
+              <option value="Mathematics">Mathematics</option>
+              <option value="Micro Economics">Micro Economics</option>
+              <option value="Notes">Notes</option>
+              <option value="Physics">Physics</option>
+              <option value="Political Science">Political Science</option>
+              <option value="Psychology">Psychology</option>
+              <option value="Sanskrit">Sanskrit</option>
+              <option value="Science">Science</option>
+              <option value="Social Studies">Social Studies</option>
+              <option value="Sociology">Sociology</option>
             </select>
           </div>
-          
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
             <select
               value={formData.grade_level}
-              onChange={(e) => setFormData({...formData, grade_level: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, grade_level: e.target.value })}
               className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
             >
               <option value="Grade 6">Grade 6</option>
@@ -2371,21 +2582,22 @@ const CreateContent = () => {
               <option value="Grade 8">Grade 8</option>
               <option value="Grade 9">Grade 9</option>
               <option value="Grade 10">Grade 10</option>
+              <option value="Grade 11">Grade 11</option>
+              <option value="Grade 12">Grade 12</option>
+              <option value="University Level">University Level</option>
             </select>
           </div>
         </div>
-
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Topic Description</label>
           <textarea
             value={formData.topic}
-            onChange={(e) => setFormData({...formData, topic: e.target.value})}
+            onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
             placeholder="Describe the topic you want to generate content for..."
             className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 min-h-[100px]"
             required
           />
         </div>
-
         <button
           type="submit"
           disabled={loading}
@@ -2396,10 +2608,145 @@ const CreateContent = () => {
       </form>
     </div>
   );
+
+  const renderView = () => (
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">View Study Content</h1>
+        <button
+          onClick={() => setMode('list')}
+          className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600"
+        >
+          Back to List
+        </button>
+      </div>
+      {selectedContent && (
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h2 className="text-2xl font-semibold mb-4">{selectedContent.title}</h2>
+          <p><strong>Subject:</strong> {selectedContent.subject}</p>
+          <p><strong>Grade Level:</strong> {selectedContent.grade_level}</p>
+          <p><strong>Tags:</strong> {selectedContent.tags?.join(', ') || 'None'}</p>
+          <div className="mt-4">
+            <strong>Content:</strong>
+            <div className="mt-2 p-4 bg-gray-50 rounded-lg whitespace-pre-wrap">{selectedContent.content}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderEditForm = () => (
+    <div className="p-6 max-w-2xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">Edit Study Content</h1>
+        <button
+          onClick={() => setMode('list')}
+          className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600"
+        >
+          Back to List
+        </button>
+      </div>
+      <form onSubmit={handleEditSubmit} className="bg-white rounded-xl p-6 shadow-sm border space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Content Title</label>
+          <input
+            type="text"
+            value={formData.title}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            required
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+            <select
+              value={formData.subject}
+              onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Accountancy">Accountancy</option>
+              <option value="Arts">Arts</option>
+              <option value="Bangla">Bangla</option>
+              <option value="Biology">Biology</option>
+              <option value="Business Studies">Business Studies</option>
+              <option value="C++">C++</option>
+              <option value="Chemistry">Chemistry</option>
+              <option value="Civics">Civics</option>
+              <option value="English">English</option>
+              <option value="History">History</option>
+              <option value="Indian Economics">Indian Economics</option>
+              <option value="Information Practices">Information Practices</option>
+              <option value="Macro Economics">Macro Economics</option>
+              <option value="Mathematics">Mathematics</option>
+              <option value="Micro Economics">Micro Economics</option>
+              <option value="Notes">Notes</option>
+              <option value="Physics">Physics</option>
+              <option value="Political Science">Political Science</option>
+              <option value="Psychology">Psychology</option>
+              <option value="Sanskrit">Sanskrit</option>
+              <option value="Science">Science</option>
+              <option value="Social Studies">Social Studies</option>
+              <option value="Sociology">Sociology</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
+            <select
+              value={formData.grade_level}
+              onChange={(e) => setFormData({ ...formData, grade_level: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Grade 6">Grade 6</option>
+              <option value="Grade 7">Grade 7</option>
+              <option value="Grade 8">Grade 8</option>
+              <option value="Grade 9">Grade 9</option>
+              <option value="Grade 10">Grade 10</option>
+              <option value="Grade 11">Grade 11</option>
+              <option value="Grade 12">Grade 12</option>
+              <option value="University Level">University Level</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Content</label>
+          <textarea
+            value={formData.content}
+            onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+            placeholder="Edit the content..."
+            className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 min-h-[200px]"
+            required
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+        >
+          {loading ? 'Updating...' : 'Update Content'}
+        </button>
+      </form>
+    </div>
+  );
+
+  return (
+    <div>
+      {mode === 'list' && renderList()}
+      {mode === 'create' && renderCreateForm()}
+      {mode === 'view' && renderView()}
+      {mode === 'edit' && renderEditForm()}
+    </div>
+  );
 };
 
+
 // Create Quiz Component (for teachers)
+
 const CreateQuiz = () => {
+  const [mode, setMode] = useState('list'); // Modes: 'list', 'create', 'view'
+  const [quizzes, setQuizzes] = useState([]);
+  const [selectedQuiz, setSelectedQuiz] = useState(null);
+  const [userAnswers, setUserAnswers] = useState({}); // For interactive viewing
   const [formData, setFormData] = useState({
     title: '',
     subject: 'Mathematics',
@@ -2409,22 +2756,34 @@ const CreateQuiz = () => {
     difficulty: 'medium'
   });
   const [loading, setLoading] = useState(false);
+  const [fetchLoading, setFetchLoading] = useState(false);
 
-  const handleSubmit = async (e) => {
+  // Fetch teacher's quizzes on mount and after actions
+  useEffect(() => {
+    fetchQuizzes();
+  }, []);
+
+  const fetchQuizzes = async () => {
+    setFetchLoading(true);
+    try {
+      const response = await axios.get('/quiz/list');
+      setQuizzes(response.data);
+    } catch (error) {
+      toast.error('Failed to fetch quizzes');
+    } finally {
+      setFetchLoading(false);
+    }
+  };
+
+  const handleCreateSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
     try {
       await axios.post('/quiz/generate', formData);
       toast.success('Quiz generated successfully!');
-      setFormData({
-        title: '',
-        subject: 'Mathematics',
-        grade_level: 'Grade 8', 
-        topic: '',
-        num_questions: 10,
-        difficulty: 'medium'
-      });
+      resetForm();
+      setMode('list');
+      fetchQuizzes();
     } catch (error) {
       toast.error('Failed to generate quiz');
     } finally {
@@ -2432,42 +2791,123 @@ const CreateQuiz = () => {
     }
   };
 
-  return (
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      subject: 'Mathematics',
+      grade_level: 'Grade 8',
+      topic: '',
+      num_questions: 10,
+      difficulty: 'medium'
+    });
+  };
+
+  const handleView = (quiz) => {
+    setSelectedQuiz(quiz);
+    setUserAnswers({}); // Reset answers for new view
+    setMode('view');
+  };
+
+  const handleAnswerSelect = (questionIndex, optionIndex) => {
+    setUserAnswers({ ...userAnswers, [questionIndex]: optionIndex });
+  };
+
+  const renderList = () => (
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">My Quizzes</h1>
+        <button
+          onClick={() => setMode('create')}
+          className="bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600"
+        >
+          Create New Quiz
+        </button>
+      </div>
+      {fetchLoading ? (
+        <p>Loading...</p>
+      ) : quizzes.length === 0 ? (
+        <p>No quizzes found. Create your first quiz!</p>
+      ) : (
+        <div className="space-y-4">
+          {quizzes.map((quiz) => (
+            <div key={quiz.id} className="bg-white rounded-xl p-4 shadow-sm border">
+              <h2 className="text-xl font-semibold">{quiz.title}</h2>
+              <p>Subject: {quiz.subject} | Grade: {quiz.grade_level} | Questions: {quiz.questions.length} | Total Marks: {quiz.total_marks}</p>
+              <div className="mt-4">
+                <button
+                  onClick={() => handleView(quiz)}
+                  className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                >
+                  View Quiz
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderCreateForm = () => (
     <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">Create Quiz</h1>
-      
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl p-6 shadow-sm border space-y-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">Create Quiz</h1>
+        <button
+          onClick={() => setMode('list')}
+          className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600"
+        >
+          Back to List
+        </button>
+      </div>
+      <form onSubmit={handleCreateSubmit} className="bg-white rounded-xl p-6 shadow-sm border space-y-6">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Quiz Title</label>
           <input
             type="text"
             value={formData.title}
-            onChange={(e) => setFormData({...formData, title: e.target.value})}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
             required
           />
         </div>
-
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
             <select
               value={formData.subject}
-              onChange={(e) => setFormData({...formData, subject: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
               className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
             >
-              <option value="Mathematics">Mathematics</option>
-              <option value="Science">Science</option>
+              <option value="Accountancy">Accountancy</option>
+              <option value="Arts">Arts</option>
+              <option value="Bangla">Bangla</option>
+              <option value="Biology">Biology</option>
+              <option value="Business Studies">Business Studies</option>
+              <option value="C++">C++</option>
+              <option value="Chemistry">Chemistry</option>
+              <option value="Civics">Civics</option>
               <option value="English">English</option>
               <option value="History">History</option>
+              <option value="Indian Economics">Indian Economics</option>
+              <option value="Information Practices">Information Practices</option>
+              <option value="Macro Economics">Macro Economics</option>
+              <option value="Mathematics">Mathematics</option>
+              <option value="Micro Economics">Micro Economics</option>
+              <option value="Notes">Notes</option>
+              <option value="Physics">Physics</option>
+              <option value="Political Science">Political Science</option>
+              <option value="Psychology">Psychology</option>
+              <option value="Sanskrit">Sanskrit</option>
+              <option value="Science">Science</option>
+              <option value="Social Studies">Social Studies</option>
+              <option value="Sociology">Sociology</option>
             </select>
           </div>
-          
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
             <select
               value={formData.grade_level}
-              onChange={(e) => setFormData({...formData, grade_level: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, grade_level: e.target.value })}
               className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
             >
               <option value="Grade 6">Grade 6</option>
@@ -2475,27 +2915,28 @@ const CreateQuiz = () => {
               <option value="Grade 8">Grade 8</option>
               <option value="Grade 9">Grade 9</option>
               <option value="Grade 10">Grade 10</option>
+              <option value="Grade 11">Grade 11</option>
+              <option value="Grade 12">Grade 12</option>
+              <option value="University Level">University Level</option>
             </select>
           </div>
         </div>
-
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Quiz Topic</label>
           <textarea
             value={formData.topic}
-            onChange={(e) => setFormData({...formData, topic: e.target.value})}
+            onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
             placeholder="Describe the topic for quiz questions..."
             className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 min-h-[100px]"
             required
           />
         </div>
-
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Number of Questions</label>
             <select
               value={formData.num_questions}
-              onChange={(e) => setFormData({...formData, num_questions: parseInt(e.target.value)})}
+              onChange={(e) => setFormData({ ...formData, num_questions: parseInt(e.target.value) })}
               className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
             >
               <option value={5}>5 Questions</option>
@@ -2504,12 +2945,11 @@ const CreateQuiz = () => {
               <option value={20}>20 Questions</option>
             </select>
           </div>
-          
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Difficulty</label>
             <select
               value={formData.difficulty}
-              onChange={(e) => setFormData({...formData, difficulty: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
               className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
             >
               <option value="easy">Easy</option>
@@ -2518,7 +2958,6 @@ const CreateQuiz = () => {
             </select>
           </div>
         </div>
-
         <button
           type="submit"
           disabled={loading}
@@ -2529,7 +2968,67 @@ const CreateQuiz = () => {
       </form>
     </div>
   );
+
+  const renderView = () => (
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">View Quiz: {selectedQuiz?.title}</h1>
+        <button
+          onClick={() => setMode('list')}
+          className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600"
+        >
+          Back to List
+        </button>
+      </div>
+      {selectedQuiz && (
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <p><strong>Subject:</strong> {selectedQuiz.subject}</p>
+          <p><strong>Grade Level:</strong> {selectedQuiz.grade_level}</p>
+          <p><strong>Total Marks:</strong> {selectedQuiz.total_marks}</p>
+          <div className="mt-6">
+            <h3 className="text-lg font-semibold mb-4">Questions (Interactive Review)</h3>
+            {selectedQuiz.questions.map((question, index) => (
+              <div key={index} className="mb-6 p-4 border rounded-lg">
+                <p className="font-medium mb-2">{index + 1}. {question.question}</p>
+                <div className="space-y-2">
+                  {question.options.map((option, optIndex) => {
+                    const isSelected = userAnswers[index] === optIndex;
+                    const isCorrect = optIndex === question.correct_answer;
+                    let className = 'p-2 border rounded cursor-pointer';
+                    if (isSelected) {
+                      className += isCorrect ? ' bg-green-200 border-green-500' : ' bg-red-200 border-red-500';
+                    } else if (isCorrect && userAnswers[index] !== undefined) {
+                      className += ' bg-green-100 border-green-300';
+                    }
+                    return (
+                      <div
+                        key={optIndex}
+                        className={className}
+                        onClick={() => handleAnswerSelect(index, optIndex)}
+                      >
+                        {String.fromCharCode(65 + optIndex)}. {option}
+                        {isCorrect && userAnswers[index] !== undefined && ' (Correct)'}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div>
+      {mode === 'list' && renderList()}
+      {mode === 'create' && renderCreateForm()}
+      {mode === 'view' && renderView()}
+    </div>
+  );
 };
+
 
 // Students Management Component (for teachers)
 const StudentsManagement = () => {
@@ -2580,6 +3079,10 @@ const FileUpload = () => {
       toast.error('Please upload only PDF files');
       return;
     }
+    if (fileSizeMB > 5) {
+    toast.error('File size must be less than 5 MB');
+    return;
+    }
 
     setUploading(true);
     try {
@@ -2590,10 +3093,13 @@ const FileUpload = () => {
       formData.append('description', uploadForm.description || `Study material: ${file.name}`);
 
       const config = {
-        headers: { 
+        headers: {
           'Content-Type': 'multipart/form-data',
-          ...axios.defaults.headers.common 
-        }
+          ...axios.defaults.headers.common
+        },
+        maxContentLength: 10 * 1024 * 1024, // 10 MB
+        maxBodyLength: 10 * 1024 * 1024,
+
       };
       
       const response = await axios.post('/teacher/upload-material', formData, config);
@@ -2628,11 +3134,30 @@ const FileUpload = () => {
               onChange={(e) => setUploadForm({...uploadForm, subject: e.target.value})}
               className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
             >
-              <option value="Mathematics">Mathematics</option>
-              <option value="Science">Science</option>
+              <option value="Accountancy">Accountancy</option>
+              <option value="Arts">Arts</option>
+              <option value="Bangla">Bangla</option>
+              <option value="Biology">Biology</option>
+              <option value="Business Studies">Business Studies</option>
+              <option value="C++">C++</option>
+              <option value="Chemistry">Chemistry</option>
+              <option value="Civics">Civics</option>
               <option value="English">English</option>
               <option value="History">History</option>
-              <option value="Geography">Geography</option>
+              <option value="Indian Economics">Indian Economics</option>
+              <option value="Information Practices">Information Practices</option>
+              <option value="Macro Economics">Macro Economics</option>
+              <option value="Mathematics">Mathematics</option>
+              <option value="Micro Economics">Micro Economics</option>
+              <option value="Notes">Notes</option>
+              <option value="Physics">Physics</option>
+              <option value="Political Science">Political Science</option>
+              <option value="Psychology">Psychology</option>
+              <option value="Sanskrit">Sanskrit</option>
+              <option value="Science">Science</option>
+              <option value="Social Studies">Social Studies</option>
+              <option value="Sociology">Sociology</option>
+
             </select>
           </div>
 
@@ -2648,6 +3173,9 @@ const FileUpload = () => {
               <option value="Grade 8">Grade 8</option>
               <option value="Grade 9">Grade 9</option>
               <option value="Grade 10">Grade 10</option>
+              <option value="Grade 11">Grade 11</option>
+              <option value="Grade 12">Grade 12</option>
+              <option value="University Level">University Level</option>
             </select>
           </div>
         </div>

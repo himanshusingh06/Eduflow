@@ -40,7 +40,6 @@ load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
-print(mongo_url)
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
@@ -129,8 +128,7 @@ RAZORPAY_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET")
 CALLBACK_BASE_URL = os.environ.get("CALLBACK_BASE_URL")
 
 # Create the main app
-app = FastAPI(title="EduAgent - AI Powered Educational Platform")
-app = FastAPI(title="EduAgent - AI Powered Educational Platform",docs_url="/api/docs",redoc_url="/api/redoc",openapi_url="/api/openapi.json")
+app = FastAPI(title="Edumate - AI Powered Educational Platform",docs_url="/api/docs",redoc_url="/api/redoc",openapi_url="/api/openapi.json")
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 # Create a router with the /api prefix
@@ -487,10 +485,6 @@ def verify_reset_token(token: str):
 def hash_password(password: str):
     return hashlib.sha256(password.encode()).hexdigest()
 
-import os
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 
 async def send_reset_email(email: str, reset_link: str):
@@ -503,11 +497,14 @@ async def send_reset_email(email: str, reset_link: str):
             <body>
                 <p>Hi,</p>
                 <p>We received a request to reset your password. Click the link below to reset it:</p>
-                <p><a href="{reset_link}">Reset Password</a></p>
+                <a href="{{reset_link}}"
+               style="background-color:#4CAF50;color:white;
+                      padding:10px 15px;text-decoration:none;
+                      border-radius:5px;">{reset_link}</a>
                 <p>This link will expire in 15 minutes.</p>
                 <br>
                 <p>If you didn't request this, please ignore this email.</p>
-                <p>— Your App Team</p>
+                <p>— Edumate Team</p>
             </body>
         </html>
         """
@@ -1017,7 +1014,7 @@ async def register(user_data: UserCreate):
 
     # Generate JWT verification token
     token = generate_verification_token(user_data.email)
-    verification_link = f"http://{FRONTEND_URL}verify-email/{token}"
+    verification_link = f"{FRONTEND_URL}verify-email/{token}"
 
     # Send verification email
     await send_verification_email(user_data.email, verification_link)
@@ -1055,7 +1052,7 @@ async def resend_verification(email: EmailStr):
 
     # Generate new token
     token = generate_verification_token(email)
-    verification_link = f"http://{FRONTEND_URL}verify-email/{token}"
+    verification_link = f"{FRONTEND_URL}verify-email/{token}"
 
     await send_verification_email(email, verification_link)
 
@@ -1131,6 +1128,87 @@ async def get_study_content(
         
     content_list = await db.study_content.find(query).to_list(100)
     return [StudyContent(**content) for content in content_list]
+
+
+@api_router.get("/teacher/my-contents", response_model=List[StudyContent])
+async def get_teacher_contents(current_user: User = Depends(get_current_user)):
+    """Return only the study contents created by the current teacher"""
+    if current_user.role != "teacher":
+        raise HTTPException(status_code=403, detail="Teacher access required")
+
+    try:
+        contents = await db.study_content.find({"created_by": current_user.id}).to_list(100)
+        return [StudyContent(**content) for content in contents]
+    except Exception as e:
+        logging.error(f"Error fetching teacher contents: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch teacher contents")
+
+
+@api_router.put("/teacher/update-content/{content_id}", response_model=StudyContent)
+async def update_study_content(
+    content_id: str,
+    update_data: StudyContentCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Allow only the teacher who created the content to update it"""
+    if current_user.role != "teacher":
+        raise HTTPException(status_code=403, detail="Teacher access required")
+
+    try:
+        existing = await db.study_content.find_one({"_id": ObjectId(content_id)})
+
+        if not existing:
+            raise HTTPException(status_code=404, detail="Content not found")
+
+        if existing["created_by"] != current_user.id:
+            raise HTTPException(status_code=403, detail="You can update only your own contents")
+
+        updated_content = {
+            "title": update_data.title,
+            "subject": update_data.subject,
+            "grade_level": update_data.grade_level,
+            "tags": update_data.tags,
+            "content": update_data.content  # optional: keep old AI content if not updated
+        }
+
+        await db.study_content.update_one(
+            {"_id": ObjectId(content_id)},
+            {"$set": updated_content}
+        )
+
+        updated = await db.study_content.find_one({"_id": ObjectId(content_id)})
+        return StudyContent(**updated)
+
+    except Exception as e:
+        logging.error(f"Error updating content: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update study content")
+
+
+@api_router.delete("/teacher/delete-content/{content_id}")
+async def delete_study_content(
+    content_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Allow teacher to delete their own study content"""
+    if current_user.role != "teacher":
+        raise HTTPException(status_code=403, detail="Teacher access required")
+
+    try:
+        existing = await db.study_content.find_one({"_id": ObjectId(content_id)})
+
+        if not existing:
+            raise HTTPException(status_code=404, detail="Content not found")
+
+        if existing["created_by"] != current_user.id:
+            raise HTTPException(status_code=403, detail="You can delete only your own contents")
+
+        await db.study_content.delete_one({"_id": ObjectId(content_id)})
+        return {"message": "Study content deleted successfully"}
+
+    except Exception as e:
+        logging.error(f"Error deleting content: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete study content")
+
 
 # ============= QUIZ ROUTES =============
 
@@ -2394,7 +2472,7 @@ async def send_quiz_report_email(email_report: EmailReport) -> bool:
         </head>
         <body>
             <div class="header">
-                <h1>🎓 EduAgent Quiz Report</h1>
+                <h1>🎓 Edumate Quiz Report</h1>
                 <h2>{email_report.quiz_title}</h2>
             </div>
             
@@ -2433,10 +2511,11 @@ async def send_quiz_report_email(email_report: EmailReport) -> bool:
                 </ul>
                 
                 <p>Keep up the great work and continue learning!</p>
+                <p>— Edumate Team</p>
             </div>
             
             <div class="footer">
-                <p>This report was generated by EduAgent AI Learning Platform</p>
+                <p>This report was generated by Edumate AI Learning Platform</p>
                 <p>Contact your teacher if you have any questions about this report.</p>
             </div>
         </body>
