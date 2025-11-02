@@ -1528,27 +1528,6 @@ async def get_teacher_dashboard(current_user: User = Depends(get_current_user)):
 
     return fix_objectids(result)
 
-@api_router.get("/dashboard/parent")
-async def get_parent_dashboard(current_user: User = Depends(get_current_user)):
-    if current_user.role != "parent":
-        raise HTTPException(status_code=403, detail="Parent access required")
-    
-    students = await db.users.find({"role": "student"}).to_list(100)
-    students = [fix_objectids(s) for s in students]
-
-    student_progress = []
-    for student in students[:5]:
-        progress = await get_student_progress(student["_id"], current_user)
-        student_progress.append({
-            "student": student,
-            "progress": progress
-        })
-
-    return {
-        "user": fix_objectids(current_user.dict() if hasattr(current_user, "dict") else current_user),
-        "students": students[:5],
-        "student_progress": student_progress
-    }
 
 
 # ============= PAYMENT ROUTES =============
@@ -3613,50 +3592,225 @@ async def get_learning_insights(current_user: User = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ============= PARENT PROGRESS ROUTES =============
+from bson import ObjectId, errors as bson_errors
+def to_objectid(id_value):
+    """Convert hex string or ObjectId to ObjectId, or raise HTTPException(400)."""
+    if isinstance(id_value, ObjectId):
+        return id_value
+    try:
+        return ObjectId(id_value)
+    except (bson_errors.InvalidId, TypeError, ValueError):
+        raise HTTPException(status_code=400, detail=f"Invalid id: {id_value}")
+# Sample generate_progress_report (implement fully based on your data)
+async def generate_progress_report_for_parent(student_id: str, parent_id: str):
+    # normalize student_id to ObjectId
+    student_oid = to_objectid(student_id)
+    student = await db.users.find_one({"_id": student_oid})
+    if not student or student.get("parent_id") != parent_id:
+        # use HTTPException so caller can send 403
+        raise HTTPException(status_code=403, detail="Access denied to this student")
 
-@api_router.get("/parent/progress-report/{student_id}")
-async def get_student_progress_report(
-    student_id: str,
+    quizzes = await db.quizzes.find({"student_id": str(student_oid)}).to_list(100)
+    total_quizzes = len(quizzes)
+    average_score = sum(q.get("score", 0) for q in quizzes) / total_quizzes if total_quizzes else 0
+    total_questions_asked = sum(q.get("questions_asked", 0) for q in quizzes)
+
+    # Ensure overall_performance always present
+    return {
+        "student_info": {"name": student["name"], "email": student["email"]},
+        "overall_performance": {
+            "total_quizzes": total_quizzes,
+            "average_score": round(average_score, 2),
+            "total_questions_asked": total_questions_asked,
+            "performance_trend": "improving" if average_score > 70 else "stable"
+        },
+        "subject_performance": {},
+        "ai_insights": "Your child is improving in math but needs focus on science.",
+        "learning_path": {
+            "current_level": "Intermediate",
+            "strong_areas": ["Math"],
+            "weak_areas": ["Science"]
+        }
+    }
+
+
+# Sample get_student_progress (for dashboard)
+async def get_student_progress_for_parent(student_id: str, parent_id: str):
+    # Reuse generate_progress_report_for_parent which handles auth and ObjectId conversion
+    report = await generate_progress_report_for_parent(student_id, parent_id)
+
+    overall = report.get("overall_performance", {})
+    return {
+        "average_score": overall.get("average_score", 0),
+        "total_quizzes": overall.get("total_quizzes", 0),
+        "total_questions_asked": overall.get("total_questions_asked", 0),
+        "subject_breakdown": report.get("subject_performance", {})
+    }
+
+
+# New Endpoint: Link Child
+@api_router.post("/parent/link-child")
+async def link_child(
+    child_data: dict,  # {email: str, password: str}
     current_user: User = Depends(get_current_user)
 ):
-    """Get comprehensive progress report for parents"""
+    """Link a child to the parent account"""
     try:
-        # Verify parent access (in real app, you'd have proper parent-child linking)
         if current_user.role != "parent":
             raise HTTPException(status_code=403, detail="Parent access required")
         
-        # Generate progress report
-        report = await generate_progress_report(student_id, current_user.id)
+        email = child_data.get("email")
+        password = child_data.get("password")
+        if not email or not password:
+            raise HTTPException(status_code=400, detail="Email and password are required")
         
-        return report
+        # Find the student by email
+        student_doc = await db.users.find_one({"email": email, "role": "student"})
+        if not student_doc:
+            raise HTTPException(status_code=404, detail="Student not found")
         
+        # Verify password using your verify_password function
+        if not verify_password(password, student_doc["password"]):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        student_id = str(student_doc["_id"])
+        
+        # Check if already linked (student has parent_id or parent has student in list)
+        if student_doc.get("parent_id") or student_id in (current_user.students or []):
+            raise HTTPException(status_code=400, detail="Child already linked")
+        
+        # Link: Set student's parent_id and add to parent's students list
+        await db.users.update_one(
+            {"_id": student_doc["_id"]},
+            {"$set": {"parent_id": str(current_user.id)}}
+        )
+        await db.users.update_one(
+            {"id": current_user.id},
+            {"$push": {"students": student_id}}
+        )
+        
+        return {"message": "Child linked successfully", "student_id": student_id}
+        
+    except HTTPException as e:
+        raise e
     except Exception as e:
-        logging.error(f"Progress report error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logging.error(f"Link child error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+# Updated: Get Linked Students
 
 @api_router.get("/parent/students")
 async def get_linked_students(current_user: User = Depends(get_current_user)):
-    """Get students linked to parent account"""
+    """Get students and related info linked to parent account"""
     try:
         if current_user.role != "parent":
             raise HTTPException(status_code=403, detail="Parent access required")
         
-        # For demo purposes, return all students
-        # In real app, you'd have proper parent-child relationships
-        students_docs = await db.users.find({"role": "student"}).to_list(100)
-        
-        # Convert to User objects to avoid ObjectId serialization issues
+        # Fetch students linked to the current parent
+        students_docs = await db.users.find({"parent_id": str(current_user.id)}).to_list(100)
+
         students = []
+        student_progress = []
+
         for doc in students_docs:
-            # Remove MongoDB ObjectId and password fields
-            clean_doc = {k: v for k, v in doc.items() if k not in ["_id", "password"]}
-            students.append(clean_doc)
+            student = {
+                "_id": str(doc["_id"]),
+                "id": doc.get("id"),
+                "email": doc.get("email"),
+                "name": doc.get("name"),
+                "role": doc.get("role"),
+                "phone": doc.get("phone"),
+                "created_at": doc.get("created_at"),
+                "is_verified": doc.get("is_verified"),
+                "is_active": doc.get("is_active"),
+                "students": doc.get("students", []),
+                "classes": doc.get("classes", []),
+                "parent_id": doc.get("parent_id"),
+            }
+            students.append(student)
+
+            # TODO: Add logic to compute or fetch progress data
+            # For now, add empty progress placeholders as in dashboard
+            progress = {
+                "average_score": 0,
+                "total_quizzes": 0,
+                "total_questions_asked": 0,
+                "subject_breakdown": {}
+            }
+            student_progress.append({
+                "student": student,
+                "progress": progress
+            })
         
-        return {"students": students}
+        return {
+            "user": {
+                "email": current_user.email,
+                "name": current_user.name,
+                "role": current_user.role,
+                "id": current_user.id,
+                "created_at": current_user.created_at,
+                "is_verified": current_user.is_verified,
+                "is_active": current_user.is_active,
+                "students": [str(s["_id"]) for s in students_docs],
+                "classes": current_user.classes,
+            },
+            "students": students,
+            "student_progress": student_progress
+        }
         
     except Exception as e:
         logging.error(f"Linked students error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# Updated: Get Progress Report
+@api_router.get("/parent/progress-report/{student_id}")
+async def get_student_progress_report(student_id: str, current_user: User = Depends(get_current_user)):
+    try:
+        if current_user.role != "parent":
+            raise HTTPException(status_code=403, detail="Parent access required")
+
+        # verify student linked to this parent using ObjectId
+        student_oid = to_objectid(student_id)
+        student = await db.users.find_one({"_id": student_oid, "parent_id": str(current_user.id)})
+        if not student:
+            raise HTTPException(status_code=403, detail="Access denied to this student")
+
+        report = await generate_progress_report_for_parent(student_id, str(current_user.id))
+        return report
+
+    except HTTPException:
+        # re-raise so FastAPI sends correct status code
+        raise
+    except Exception as e:
+        logging.error(f"Progress report error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# Updated: Get Parent Dashboard
+@api_router.get("/dashboard/parent")
+async def get_parent_dashboard(current_user: User = Depends(get_current_user)):
+    if current_user.role != UserRoles.PARENT:
+        raise HTTPException(status_code=403, detail="Parent access required")
+
+    students_docs = await db.users.find({"parent_id": str(current_user.id)}).to_list(100)
+    students = [fix_objectids(s) for s in students_docs]
+
+    student_progress = []
+    for student in students_docs:
+        student_id_str = str(student["_id"])   # ensure string hex
+        progress = await get_student_progress_for_parent(student_id_str, str(current_user.id))
+        student_progress.append({
+            "student": fix_objectids(student),
+            "progress": progress
+        })
+
+    return {
+        "user": fix_objectids(current_user.dict() if hasattr(current_user, "dict") else current_user),
+        "students": students,
+        "student_progress": student_progress
+    }
 
 # ============= GENERAL ROUTES =============
 

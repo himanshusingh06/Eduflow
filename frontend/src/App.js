@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import axios from 'axios';
 import toast, { Toaster } from 'react-hot-toast';
 import edumatelogo from "./assets/edumale_logo.jpg" 
+import { Bar } from 'react-chartjs-2';
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
 import { User, BookOpen, GraduationCap, MessageSquare, BarChart3,MessageCircle, Settings, LogOut, Brain, Users, PenTool, Menu, X, Upload } from 'lucide-react';
 import './App.css';
 
@@ -872,13 +874,15 @@ const TeacherDashboard = () => {
   );
 };
 
+
+
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+
 const ParentDashboard = () => {
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const fetchDashboardData = async () => {
     try {
@@ -891,18 +895,40 @@ const ParentDashboard = () => {
     }
   };
 
-  if (loading) {
-    return <div className="p-6">Loading dashboard...</div>;
-  }
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const handleAddChildSuccess = () => {
+    fetchDashboardData();
+  };
+
+  if (loading) return <div className="p-6">Loading dashboard...</div>;
+
+  const progressChartData = {
+    labels: dashboardData?.student_progress?.map(p => p.student.name) || [],
+    datasets: [{
+      label: 'Average Score (%)',
+      data: dashboardData?.student_progress?.map(p => p.progress.average_score) || [],
+      backgroundColor: 'rgba(54, 162, 235, 0.5)',
+    }]
+  };
 
   return (
     <div className="p-6 space-y-6" data-testid="parent-dashboard">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Parent Dashboard</h1>
-        <p className="text-gray-600">Monitor your children's learning progress</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Parent Dashboard</h1>
+          <p className="text-gray-600">Monitor your children's learning progress</p>
+        </div>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+        >
+          Add Child
+        </button>
       </div>
 
-      {/* Children Overview */}
       <div className="bg-white rounded-2xl shadow-sm border p-6">
         <h3 className="text-lg font-semibold mb-4">My Children</h3>
         {dashboardData?.students?.length ? (
@@ -927,47 +953,41 @@ const ParentDashboard = () => {
             ))}
           </div>
         ) : (
-          <p className="text-gray-500">No children linked to your account yet.</p>
+          <p className="text-gray-500">No children linked. Click "Add Child" to get started.</p>
         )}
       </div>
 
-      {/* Progress Summary */}
-      <div className="bg-white rounded-2xl shadow-sm border p-6">
-        <h3 className="text-lg font-semibold mb-4">Progress Summary</h3>
-        {dashboardData?.student_progress?.length ? (
-          <div className="space-y-4">
-            {dashboardData.student_progress.map((item, idx) => (
-              <div key={idx} className="p-4 bg-gray-50 rounded-xl">
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <p className="font-medium">{item.student.name}</p>
-                    <p className="text-sm text-gray-600">Overall Progress</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-lg font-bold text-emerald-600">{item.progress.average_score}%</p>
-                    <p className="text-xs text-gray-500">{item.progress.total_quizzes} quizzes</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-gray-600">Questions Asked</p>
-                    <p className="font-medium">{item.progress.total_questions_asked}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-600">Subjects</p>
-                    <p className="font-medium">{Object.keys(item.progress.subject_breakdown || {}).length}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
+      {dashboardData?.student_progress?.length && (
+        <div className="bg-white rounded-2xl shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4">Progress Insights</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h4 className="font-medium mb-2">Average Scores</h4>
+              <Bar data={progressChartData} />
+            </div>
+            <div>
+              <h4 className="font-medium mb-2">Recent Activities</h4>
+              <ul className="space-y-2">
+                {dashboardData.student_progress.map((item, idx) => (
+                  <li key={idx} className="text-sm">
+                    {item.student.name}: {item.progress.total_quizzes} quizzes, {item.progress.total_questions_asked} questions.
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
-        ) : (
-          <p className="text-gray-500">No progress data available yet.</p>
-        )}
-      </div>
+        </div>
+      )}
+
+      <AddChildModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={handleAddChildSuccess}
+      />
     </div>
   );
 };
+
 
 // Study Content Component
 const StudyContent = () => {
@@ -4284,18 +4304,41 @@ const WhatsAppMonitor = () => {
 };
 
 // My Children Component (for parents)
+
 const MyChildren = () => {
   const [children, setChildren] = useState([]);
+  const [childrenProgress, setChildrenProgress] = useState({});
   const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    fetchChildren();
+    fetchChildrenData();
   }, []);
 
-  const fetchChildren = async () => {
+  const fetchChildrenData = async () => {
     try {
-      const response = await axios.get('/parent/students');
-      setChildren(response.data.students);
+      // Fetch linked students
+      const studentsResponse = await axios.get('/parent/students');
+      const students = studentsResponse.data.students;
+      setChildren(students);
+
+      // Fetch progress for each child (reuse dashboard logic)
+      const progressPromises = students.map(async (child) => {
+        try {
+          const progressResponse = await axios.get(`/parent/progress-report/${child.id}`);
+          return { id: child.id, progress: progressResponse.data.overall_performance };
+        } catch (error) {
+          console.error(`Failed to fetch progress for ${child.name}:`, error);
+          return { id: child.id, progress: null }; // Handle missing progress gracefully
+        }
+      });
+
+      const progressResults = await Promise.all(progressPromises);
+      const progressMap = {};
+      progressResults.forEach(({ id, progress }) => {
+        progressMap[id] = progress;
+      });
+      setChildrenProgress(progressMap);
     } catch (error) {
       toast.error('Failed to load children data');
     } finally {
@@ -4303,50 +4346,130 @@ const MyChildren = () => {
     }
   };
 
+  const handleAddChildSuccess = () => {
+    fetchChildrenData(); // Refresh data after adding a child
+  };
+
+  const viewFullProgress = (childId) => {
+    // Navigate to ProgressReports or open a modal with full report
+    // For simplicity, you can use React Router: navigate(`/progress-reports?child=${childId}`);
+    // Or implement a modal here. For now, show a toast.
+    toast.success('Redirecting to full progress report...');
+    // Example: window.location.href = `/progress-reports?child=${childId}`;
+  };
+
   if (loading) return <div className="p-6">Loading children data...</div>;
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">My Children</h1>
-        <p className="text-gray-600">Monitor your children's educational progress</p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Children</h1>
+          <p className="text-gray-600">Monitor your children's educational progress</p>
+        </div>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+        >
+          Add Child
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {children.map((child) => (
-          <div key={child.id} className="bg-white rounded-xl p-6 shadow-sm border hover:shadow-lg transition-shadow">
-            <div className="flex items-center space-x-4 mb-4">
-              <div className="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center">
-                <User className="w-6 h-6 text-white" />
+      {children.length === 0 ? (
+        <div className="bg-white rounded-xl p-6 shadow-sm border text-center">
+          <p className="text-gray-500 mb-4">No children linked yet. Add your first child to get started!</p>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+          >
+            Add Child
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {children.map((child) => {
+            const progress = childrenProgress[child.id];
+            return (
+              <div key={child.id} className="bg-white rounded-xl p-6 shadow-sm border hover:shadow-lg transition-shadow">
+                <div className="flex items-center space-x-4 mb-4">
+                  <div className="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center">
+                    <User className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">{child.name}</h3>
+                    <p className="text-gray-600 text-sm">{child.email}</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-2 text-sm mb-4">
+                  <p><span className="font-medium">Student ID:</span> {child.id}</p>
+                  <p><span className="font-medium">Role:</span> {child.role}</p>
+                  <p><span className="font-medium">Joined:</span> {new Date(child.created_at).toLocaleDateString()}</p>
+                </div>
+                
+                {/* Insights Section */}
+                {progress ? (
+                  <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                    <h4 className="font-medium text-gray-900 mb-2">Quick Insights</h4>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <p className="text-gray-600">Avg Score</p>
+                        <p className="font-bold text-emerald-600">{progress.average_score}%</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Quizzes</p>
+                        <p className="font-bold text-blue-600">{progress.total_quizzes}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Questions</p>
+                        <p className="font-bold text-purple-600">{progress.total_questions_asked}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Trend</p>
+                        <p className={`font-bold ${progress.performance_trend === 'improving' ? 'text-green-600' : 'text-orange-600'}`}>
+                          {progress.performance_trend === 'improving' ? '↗️' : '⚠️'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 p-4 rounded-lg mb-4 text-center">
+                    <p className="text-gray-500 text-sm">No progress data available yet.</p>
+                  </div>
+                )}
+                
+                <button
+                  onClick={() => viewFullProgress(child.id)}
+                  className="w-full bg-emerald-500 text-white py-2 rounded-lg hover:bg-emerald-600 transition-colors"
+                >
+                  View Full Progress
+                </button>
               </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">{child.name}</h3>
-                <p className="text-gray-600 text-sm">{child.email}</p>
-              </div>
-            </div>
-            
-            <div className="space-y-2 text-sm mb-4">
-              <p><span className="font-medium">Student ID:</span> {child.id}</p>
-              <p><span className="font-medium">Role:</span> {child.role}</p>
-              <p><span className="font-medium">Joined:</span> {new Date(child.created_at).toLocaleDateString()}</p>
-            </div>
-            
-            <button className="w-full bg-emerald-500 text-white py-2 rounded-lg hover:bg-emerald-600 transition-colors">
-              View Progress
-            </button>
-          </div>
-        ))}
-      </div>
+            );
+          })}
+        </div>
+      )}
+
+      <AddChildModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={handleAddChildSuccess}
+      />
     </div>
   );
 };
 
+
+
 // Progress Reports Component (for parents)
+
+
 const ProgressReports = () => {
   const [selectedChild, setSelectedChild] = useState('');
   const [children, setChildren] = useState([]);
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [filterSubject, setFilterSubject] = useState('');
 
   useEffect(() => {
     fetchChildren();
@@ -4361,19 +4484,51 @@ const ProgressReports = () => {
     }
   };
 
+  // In generateReport: pass selectedChild as _id instead of id
   const generateReport = async () => {
-    if (!selectedChild) return;
-    
+    if (!selectedChild) {
+      toast.error('Please select a child');
+      return;
+    }
     setLoading(true);
     try {
       const response = await axios.get(`/parent/progress-report/${selectedChild}`);
       setReport(response.data);
+      toast.success('Report generated successfully');
     } catch (error) {
-      toast.error('Failed to generate report');
+      const message = error.response?.data?.detail || 'Failed to generate report';
+      toast.error(message);
+      setReport(null);
     } finally {
       setLoading(false);
     }
   };
+
+
+  const exportReport = () => {
+    if (!report) {
+      toast.error('No report to export');
+      return;
+    }
+    // Mock export: In a real app, generate a PDF or CSV
+    const dataStr = JSON.stringify(report, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    const exportFileDefaultName = 'progress-report.json';
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+    toast.success('Report exported');
+  };
+
+  const filteredReport = report ? {
+    ...report,
+    subject_performance: Object.fromEntries(
+      Object.entries(report.subject_performance || {}).filter(([subject]) =>
+        !filterSubject || subject.toLowerCase().includes(filterSubject.toLowerCase())
+      )
+    )
+  } : null;
 
   return (
     <div className="p-6 space-y-6">
@@ -4386,16 +4541,19 @@ const ProgressReports = () => {
       <div className="bg-white rounded-xl p-6 shadow-sm border">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Child</h3>
         <div className="flex gap-4">
-          <select
-            value={selectedChild}
-            onChange={(e) => setSelectedChild(e.target.value)}
-            className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
-          >
-            <option value="">Select a child...</option>
-            {children.map((child) => (
-              <option key={child.id} value={child.id}>{child.name}</option>
-            ))}
-          </select>
+
+
+            <select
+              value={selectedChild}
+              onChange={(e) => setSelectedChild(e.target.value)}
+              className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="">Select a child...</option>
+              {children.map((child) => (
+                <option key={child._id} value={child._id}>{child.name}</option>
+              ))}
+            </select>
+
           <button
             onClick={generateReport}
             disabled={!selectedChild || loading}
@@ -4406,6 +4564,27 @@ const ProgressReports = () => {
         </div>
       </div>
 
+      {/* Filters and Export */}
+      {report && (
+        <div className="bg-white rounded-xl p-4 shadow-sm border flex justify-between items-center">
+          <div className="flex gap-4">
+            <input
+              type="text"
+              placeholder="Filter by subject"
+              value={filterSubject}
+              onChange={(e) => setFilterSubject(e.target.value)}
+              className="px-4 py-2 border rounded-lg"
+            />
+          </div>
+          <button
+            onClick={exportReport}
+            className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+          >
+            Export Report
+          </button>
+        </div>
+      )}
+
       {/* Progress Report Display */}
       {report && (
         <div className="space-y-6">
@@ -4415,11 +4594,11 @@ const ProgressReports = () => {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm text-gray-600">Name</p>
-                <p className="font-medium">{report.student_info.name}</p>
+                <p className="font-medium">{filteredReport.student_info.name}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Email</p>
-                <p className="font-medium">{report.student_info.email}</p>
+                <p className="font-medium">{filteredReport.student_info.email}</p>
               </div>
             </div>
           </div>
@@ -4429,20 +4608,20 @@ const ProgressReports = () => {
             <h3 className="text-xl font-semibold text-gray-900 mb-4">Overall Performance</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center">
-                <p className="text-2xl font-bold text-emerald-600">{report.overall_performance.total_quizzes}</p>
+                <p className="text-2xl font-bold text-emerald-600">{filteredReport.overall_performance.total_quizzes}</p>
                 <p className="text-gray-600">Quizzes Taken</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-blue-600">{report.overall_performance.average_score}%</p>
+                <p className="text-2xl font-bold text-blue-600">{filteredReport.overall_performance.average_score}%</p>
                 <p className="text-gray-600">Average Score</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-purple-600">{report.overall_performance.total_questions_asked}</p>
+                <p className="text-2xl font-bold text-purple-600">{filteredReport.overall_performance.total_questions_asked}</p>
                 <p className="text-gray-600">Questions Asked</p>
               </div>
               <div className="text-center">
-                <p className={`text-2xl font-bold ${report.overall_performance.performance_trend === 'improving' ? 'text-green-600' : 'text-orange-600'}`}>
-                  {report.overall_performance.performance_trend === 'improving' ? '↗️' : '⚠️'}
+                <p className={`text-2xl font-bold ${filteredReport.overall_performance.performance_trend === 'improving' ? 'text-green-600' : 'text-orange-600'}`}>
+                  {filteredReport.overall_performance.performance_trend === 'improving' ? '↗️' : '⚠️'}
                 </p>
                 <p className="text-gray-600">Trend</p>
               </div>
@@ -4450,11 +4629,11 @@ const ProgressReports = () => {
           </div>
 
           {/* Subject Performance */}
-          {Object.keys(report.subject_performance || {}).length > 0 && (
+          {Object.keys(filteredReport.subject_performance || {}).length > 0 && (
             <div className="bg-white rounded-xl p-6 shadow-sm border">
               <h3 className="text-xl font-semibold text-gray-900 mb-4">Subject Performance</h3>
               <div className="space-y-4">
-                {Object.entries(report.subject_performance).map(([subject, stats]) => (
+                {Object.entries(filteredReport.subject_performance).map(([subject, stats]) => (
                   <div key={subject} className="p-4 bg-gray-50 rounded-lg">
                     <div className="flex justify-between items-center mb-2">
                       <h4 className="font-medium text-gray-900">{subject}</h4>
@@ -4474,7 +4653,7 @@ const ProgressReports = () => {
           <div className="bg-white rounded-xl p-6 shadow-sm border">
             <h3 className="text-xl font-semibold text-gray-900 mb-4">AI Insights & Recommendations</h3>
             <div className="prose max-w-none">
-              <p className="text-gray-700">{report.ai_insights}</p>
+              <p className="text-gray-700">{filteredReport.ai_insights}</p>
             </div>
           </div>
 
@@ -4484,12 +4663,12 @@ const ProgressReports = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <h4 className="font-medium text-gray-900 mb-2">Current Level</h4>
-                <p className="text-emerald-600 font-semibold capitalize">{report.learning_path.current_level}</p>
+                <p className="text-emerald-600 font-semibold capitalize">{filteredReport.learning_path.current_level}</p>
               </div>
               <div>
                 <h4 className="font-medium text-gray-900 mb-2">Strong Areas</h4>
                 <div className="space-y-1">
-                  {report.learning_path.strong_areas.map((area, idx) => (
+                  {filteredReport.learning_path.strong_areas.map((area, idx) => (
                     <p key={idx} className="text-green-600 text-sm">{area}</p>
                   ))}
                 </div>
@@ -4497,7 +4676,7 @@ const ProgressReports = () => {
               <div>
                 <h4 className="font-medium text-gray-900 mb-2">Improvement Areas</h4>
                 <div className="space-y-1">
-                  {report.learning_path.weak_areas.map((area, idx) => (
+                  {filteredReport.learning_path.weak_areas.map((area, idx) => (
                     <p key={idx} className="text-orange-600 text-sm">{area}</p>
                   ))}
                 </div>
@@ -4506,6 +4685,79 @@ const ProgressReports = () => {
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+
+const AddChildModal = ({ isOpen, onClose, onSuccess }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!email || !password) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+    setLoading(true);
+    try {
+      await axios.post('/parent/link-child', { email, password });
+      toast.success('Child linked successfully!');
+      onSuccess();  // Refresh data
+      onClose();
+      setEmail('');
+      setPassword('');
+    } catch (error) {
+      const message = error.response?.data?.detail || 'Failed to link child';
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
+        <h2 className="text-xl font-bold mb-4">Add Child</h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <input
+            type="email"
+            placeholder="Child's Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+            required
+          />
+          <input
+            type="password"
+            placeholder="Child's App Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+            required
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+            >
+              {loading ? 'Linking...' : 'Link Child'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };
