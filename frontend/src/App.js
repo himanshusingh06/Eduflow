@@ -995,6 +995,9 @@ const StudyContent = () => {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ subject: '', grade_level: '' });
 
+  // For Preview Modal
+  const [previewItem, setPreviewItem] = useState(null);
+
   useEffect(() => {
     fetchContent();
   }, [filters]);
@@ -1014,58 +1017,11 @@ const StudyContent = () => {
     }
   };
 
-  const purchaseCourse = async (courseItem) => {
-    try {
-      // Create payment order
-      const response = await axios.post('/create-order', {
-        amount: 50000, // Rs 500 for a course
-        description: `Purchase: ${courseItem.title}`,
-        payment_type: 'one_time'
-      });
-
-      if (response.data.success) {
-        const options = {
-          key: response.data.key_id,
-          amount: response.data.amount,
-          currency: response.data.currency,
-          name: 'EduMate - Learning Platform',
-          description: `Course: ${courseItem.title}`,
-          order_id: response.data.order_id,
-          handler: async function (razorpayResponse) {
-            try {
-              await axios.post('/verify-payment', {
-                order_id: razorpayResponse.razorpay_order_id,
-                payment_id: razorpayResponse.razorpay_payment_id,
-                signature: razorpayResponse.razorpay_signature
-              });
-              
-              toast.success('Course purchased successfully!');
-            } catch (error) {
-              toast.error('Payment verification failed');
-            }
-          },
-          prefill: {
-            name: 'Student Name',
-            email: 'student@example.com',
-            contact: '9999999999'
-          },
-          theme: {
-            color: '#10b981'
-          }
-        };
-
-        const rzp = new window.Razorpay(options);
-        rzp.open();
-      }
-    } catch (error) {
-      toast.error('Failed to create payment order');
-    }
-  };
-
   if (loading) return <div className="p-6">Loading content...</div>;
 
   return (
     <div className="p-6 space-y-6">
+
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold text-gray-900">Study Content</h1>
       </div>
@@ -1075,7 +1031,7 @@ const StudyContent = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <select
             value={filters.subject}
-            onChange={(e) => setFilters({...filters, subject: e.target.value})}
+            onChange={(e) => setFilters({ ...filters, subject: e.target.value })}
             className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
           >
             <option value="">All Subjects</option>
@@ -1102,11 +1058,11 @@ const StudyContent = () => {
             <option value="Science">Science</option>
             <option value="Social Studies">Social Studies</option>
             <option value="Sociology">Sociology</option>
-
           </select>
+
           <select
             value={filters.grade_level}
-            onChange={(e) => setFilters({...filters, grade_level: e.target.value})}
+            onChange={(e) => setFilters({ ...filters, grade_level: e.target.value })}
             className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
           >
             <option value="">All Grades</option>
@@ -1136,28 +1092,29 @@ const StudyContent = () => {
                   {new Date(item.created_at).toLocaleDateString()}
                 </div>
               </div>
+
               <div className="prose max-w-none text-gray-700">
                 {item.content.substring(0, 300)}...
               </div>
+
               <div className="flex items-center justify-between mt-4">
                 <div className="flex flex-wrap gap-2">
                   {item.tags.map((tag, tagIdx) => (
-                    <span key={tagIdx} className="px-2 py-1 bg-emerald-100 text-emerald-800 text-xs rounded-full">
+                    <span
+                      key={tagIdx}
+                      className="px-2 py-1 bg-emerald-100 text-emerald-800 text-xs rounded-full"
+                    >
                       {tag}
                     </span>
                   ))}
                 </div>
-                <div className="flex space-x-2">
-                  <button 
-                    onClick={() => purchaseCourse(item)}
-                    className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors"
-                  >
-                    Purchase ₹500
-                  </button>
-                  <button className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors">
-                    Preview
-                  </button>
-                </div>
+
+                <button
+                  onClick={() => setPreviewItem(item)}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                >
+                  Preview
+                </button>
               </div>
             </div>
           ))
@@ -1169,9 +1126,59 @@ const StudyContent = () => {
           </div>
         )}
       </div>
+
+      {/* Preview Modal */}
+      {previewItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-3xl w-full p-6 shadow-lg overflow-y-auto max-h-[80vh]">
+
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h2 className="text-2xl font-bold">{previewItem.title}</h2>
+                <p className="text-gray-600">
+                  {previewItem.subject} • {previewItem.grade_level}
+                </p>
+              </div>
+
+              <button
+                onClick={() => setPreviewItem(null)}
+                className="text-gray-600 hover:text-gray-900 text-xl"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="prose max-w-none text-gray-700 whitespace-pre-line">
+              {previewItem.content}
+            </div>
+
+            <div className="flex flex-wrap gap-2 mt-6">
+              {previewItem.tags.map((tag, idx) => (
+                <span
+                  key={idx}
+                  className="px-2 py-1 bg-emerald-100 text-emerald-800 text-xs rounded-full"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+
+            <div className="mt-6 text-right">
+              <button
+                onClick={() => setPreviewItem(null)}
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition"
+              >
+                Close
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
 
 // Quiz System Component
 const QuizSystem = () => {
@@ -1962,6 +1969,48 @@ const AskAI = () => {
           </div>
         </div>
       )}
+      
+      {/* Conversation History */}
+      {conversation.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold text-gray-900">Conversation</h2>
+          <div className="space-y-4">
+            {conversation.map((msg, idx) => (
+              <div key={idx} className={`p-4 rounded-xl ${
+                msg.type === 'question' 
+                  ? 'bg-emerald-50 border-l-4 border-emerald-500' 
+                  : 'bg-blue-50 border-l-4 border-blue-500'
+              }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-medium text-sm text-gray-600">
+                      {msg.type === 'question' ? 'Your Question:' : 'AI Answer:'}
+                    </span>
+                    {msg.type === 'question' && (
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        msg.queryType === 'rag' 
+                          ? 'bg-purple-100 text-purple-800' 
+                          : 'bg-green-100 text-green-800'
+                      }`}>
+                        {msg.queryType === 'rag' ? 'Course Materials' : 'AI Tutor'}
+                      </span>
+                    )}
+                    {msg.type === 'answer' && msg.source && (
+                      <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-800">
+                        {msg.source === 'course_materials' ? '📄 Course Materials' : '🤖 AI Tutor'}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs text-gray-500">
+                    {msg.timestamp.toLocaleTimeString()}
+                  </span>
+                </div>
+                <p className="text-gray-800 whitespace-pre-wrap">{msg.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Question Input */}
       <div className="bg-white rounded-xl p-6 shadow-sm border space-y-4">
@@ -2052,47 +2101,7 @@ const AskAI = () => {
         </button>
       </div>
 
-      {/* Conversation History */}
-      {conversation.length > 0 && (
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold text-gray-900">Conversation</h2>
-          <div className="space-y-4">
-            {conversation.map((msg, idx) => (
-              <div key={idx} className={`p-4 rounded-xl ${
-                msg.type === 'question' 
-                  ? 'bg-emerald-50 border-l-4 border-emerald-500' 
-                  : 'bg-blue-50 border-l-4 border-blue-500'
-              }`}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center space-x-2">
-                    <span className="font-medium text-sm text-gray-600">
-                      {msg.type === 'question' ? 'Your Question:' : 'AI Answer:'}
-                    </span>
-                    {msg.type === 'question' && (
-                      <span className={`text-xs px-2 py-1 rounded-full ${
-                        msg.queryType === 'rag' 
-                          ? 'bg-purple-100 text-purple-800' 
-                          : 'bg-green-100 text-green-800'
-                      }`}>
-                        {msg.queryType === 'rag' ? 'Course Materials' : 'AI Tutor'}
-                      </span>
-                    )}
-                    {msg.type === 'answer' && msg.source && (
-                      <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-800">
-                        {msg.source === 'course_materials' ? '📄 Course Materials' : '🤖 AI Tutor'}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-xs text-gray-500">
-                    {msg.timestamp.toLocaleTimeString()}
-                  </span>
-                </div>
-                <p className="text-gray-800 whitespace-pre-wrap">{msg.text}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      
     </div>
   );
 };
