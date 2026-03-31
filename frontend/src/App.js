@@ -1,0 +1,5552 @@
+import React, { useState, useEffect, createContext, useContext } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useNavigate } from "react-router-dom";
+import axios from 'axios';
+import toast, { Toaster } from 'react-hot-toast';
+import edumatelogo from "./assets/edumale_logo.jpg" 
+import { Bar, Line, Pie } from 'react-chartjs-2';
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
+import { User, BookOpen, GraduationCap, MessageSquare, BarChart3, MessageCircle, Settings, LogOut, Brain, Users, PenTool, Menu, X, Upload, ShieldCheck, Ban, Unlock, RefreshCcw } from 'lucide-react';
+import './App.css';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND_URL}/api`;
+
+// Set default axios headers
+axios.defaults.baseURL = API;
+
+// Auth Context
+const AuthContext = createContext();
+const useAuth = () => useContext(AuthContext);
+
+// Auth Provider Component
+const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      fetchCurrentUser();
+    } else {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const response = await axios.get('/auth/me');
+      setUser(response.data);
+    } catch (error) {
+      console.error('Failed to fetch current user:', error);
+      logout();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  const login = (userData, userToken) => {
+    setUser(userData);
+    setToken(userToken);
+    localStorage.setItem('token', userToken);
+    axios.defaults.headers.common['Authorization'] = `Bearer ${userToken}`;
+  };
+
+  const logout = () => {
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem('token');
+    delete axios.defaults.headers.common['Authorization'];
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, token, login, logout, loading }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+// =======================
+// LOGIN + FORGET FLOW UI
+// =======================
+
+
+
+
+const Login = () => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [isForgot, setIsForgot] = useState(false);
+  const [isReset, setIsReset] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
+  const [resendTimer, setResendTimer] = useState(0);
+
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+    name: "",
+    role: "student",
+  });
+
+  const [resetData, setResetData] = useState({
+    email: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+
+  const { login } = useAuth();
+  const navigate = useNavigate();
+
+  // -----------------------
+  // HANDLE TOKEN FROM URL
+  // -----------------------
+  useEffect(() => {
+    const path = window.location.pathname;
+    const parts = path.split("/");
+
+    // detect email verification
+    if (path.includes("/verify-email/")) {
+      const token = parts.pop();
+      verifyEmailToken(token);
+    }
+
+    // detect reset password token
+    else if (path.includes("/verify-reset-token/")) {
+      const token = parts.pop();
+      verifyResetToken(token);
+    }
+  }, []);
+
+  // ✅ Verify Email Token
+  const verifyEmailToken = async (token) => {
+    setIsVerifying(true);
+    try {
+      const res = await axios.get(`/auth/verify-email/${token}`);
+      toast.success("Email verified successfully! Redirecting...");
+      login(res.data.user, res.data.access_token);
+      setTimeout(() => navigate("/dashboard"), 2000);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Invalid or expired link");
+    } finally {
+      setIsVerifying(false);
+      window.history.replaceState({}, document.title, "/");
+    }
+  };
+
+  // ✅ Verify Reset Token
+  const verifyResetToken = async (token) => {
+    setIsVerifying(true);
+    try {
+      const res = await axios.get(`/auth/verify-reset-token/${token}`);
+      toast.success(res.data.message || "Token verified, you can reset password");
+      setIsReset(true);
+      window.history.replaceState({}, document.title, `/reset/${token}`);
+      localStorage.setItem("resetToken", token);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Invalid or expired reset link");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // -----------------------
+  // LOGIN / REGISTER
+  // -----------------------
+  const handleSubmit = async (e) => {
+  e.preventDefault();
+  setIsBusy(true);
+
+  try {
+    if (isLogin) {
+      const res = await axios.post("/auth/login", formData);
+      login(res.data.user, res.data.access_token);
+      toast.success("Logged in successfully!");
+      navigate("/dashboard");
+    } else {
+      const res = await axios.post("/auth/register", formData);
+      console.log("Register response:", res); // for debugging
+      setVerificationEmail(formData.email);
+      setEmailSent(true);
+      toast.success(res.data.message || "Verification email sent! Please check your inbox.");
+      startResendTimer();
+    }
+  } catch (err) {
+    console.error("Axios error:", err.response);
+    toast.error(err.response?.data?.detail || "Authentication failed");
+  } finally {
+    setIsBusy(false);
+  }
+};
+
+
+  // -----------------------
+  // RESEND VERIFICATION
+  // -----------------------
+  const handleResendVerification = async () => {
+    if (resendTimer > 0) return;
+    setIsBusy(true);
+    try {
+      await axios.post("/auth/resend-verification", { email: verificationEmail });
+      toast.success("Verification email resent!");
+      startResendTimer();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Error resending email");
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  // -----------------------
+  // FORGOT PASSWORD
+  // -----------------------
+  const handleForgotSubmit = async (e) => {
+    e.preventDefault();
+    setIsBusy(true);
+    try {
+      await axios.post("/auth/forgot-password", { email: resetData.email });
+      setEmailSent(true);
+      toast.success("Password reset link sent to your email");
+      startResendTimer();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Error sending reset link");
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  // -----------------------
+  // RESET PASSWORD
+  // -----------------------
+  const handleResetSubmit = async (e) => {
+    e.preventDefault();
+    setIsBusy(true);
+    const token =
+      localStorage.getItem("resetToken") ||
+      window.location.pathname.split("/").pop();
+
+    if (!token) {
+      toast.error("Invalid or missing reset token");
+      setIsBusy(false);
+      return;
+    }
+    if (resetData.newPassword !== resetData.confirmPassword) {
+      toast.error("Passwords do not match");
+      setIsBusy(false);
+      return;
+    }
+
+    try {
+      await axios.post("/auth/reset-password", {
+        token,
+        new_password: resetData.newPassword,
+      });
+      toast.success("Password reset successful! You can now log in.");
+      setIsReset(false);
+      setIsLogin(true);
+      window.history.replaceState({}, document.title, "/");
+      localStorage.removeItem("resetToken");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Error resetting password");
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  // -----------------------
+  // TIMER (60s)
+  // -----------------------
+  const startResendTimer = () => {
+    setResendTimer(60);
+  };
+  useEffect(() => {
+    if (resendTimer <= 0) return;
+    const timer = setInterval(() => setResendTimer((t) => t - 1), 1000);
+    return () => clearInterval(timer);
+  }, [resendTimer]);
+
+  // -----------------------
+  // UI WHILE VERIFYING
+  // -----------------------
+  if (isVerifying) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50">
+        <div className="text-center text-lg font-semibold text-gray-700 animate-pulse">
+          Verifying your link, please wait...
+        </div>
+      </div>
+    );
+  }
+
+  // -----------------------
+  // MAIN UI
+  // -----------------------
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md backdrop-blur-sm bg-opacity-95">
+        {/* LOGO */}
+        <div className="text-center mb-8">
+          <div className="w-364 h-20 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center mx-auto mb-4 overflow-hidden">
+            <img
+              src={edumatelogo}
+              alt="Logo"
+              className="object-cover w-full h-full scale-140 rounded-md"
+            />
+          </div>
+          <p className="text-gray-600">AI-Powered Learning Platform</p>
+        </div>
+
+        {/* LOGIN / REGISTER */}
+        {!isForgot && !isReset && !emailSent && (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {!isLogin && (
+              <>
+                <input
+                  type="text"
+                  placeholder="Full Name"
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                  required
+                />
+                <select
+                  value={formData.role}
+                  onChange={(e) =>
+                    setFormData({ ...formData, role: e.target.value })
+                  }
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                >
+                  <option value="student">Student</option>
+                  <option value="teacher">Teacher</option>
+                  <option value="parent">Parent</option>
+                </select>
+              </>
+            )}
+
+            <input
+              type="email"
+              placeholder="Email"
+              value={formData.email}
+              onChange={(e) =>
+                setFormData({ ...formData, email: e.target.value })
+              }
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              required
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={formData.password}
+              onChange={(e) =>
+                setFormData({ ...formData, password: e.target.value })
+              }
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              required
+            />
+
+            <button
+              type="submit"
+              disabled={isBusy}
+              className={`w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-3 rounded-xl font-semibold transform transition-all duration-200 shadow-lg ${
+                isBusy
+                  ? "opacity-70 cursor-not-allowed"
+                  : "hover:from-emerald-600 hover:to-teal-700 hover:scale-[1.02]"
+              }`}
+            >
+              {isBusy
+                ? "Please wait..."
+                : isLogin
+                ? "Sign In"
+                : "Create Account"}
+            </button>
+
+            {isLogin && (
+              <div className="text-center mt-3">
+                <button
+                  type="button"
+                  onClick={() => setIsForgot(true)}
+                  className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
+                >
+                  Forgot Password?
+                </button>
+              </div>
+            )}
+          </form>
+        )}
+
+        {/* EMAIL SENT CONFIRMATION */}
+        {emailSent && !isReset && (
+          <div className="text-center space-y-4">
+            <h2 className="text-xl font-semibold">
+              {isForgot ? "Check your email" : "Verify your email"}
+            </h2>
+            <p className="text-gray-600">
+              {isForgot
+                ? `A password reset link has been sent to ${resetData.email}.`
+                : `A verification link has been sent to ${verificationEmail}.`}
+            </p>
+            {/* <button
+              onClick={handleResendVerification}
+              disabled={isBusy || resendTimer > 0}
+              className={`text-emerald-600 font-medium hover:text-emerald-700 ${
+                resendTimer > 0 ? "opacity-60 cursor-not-allowed" : ""
+              }`}
+            >
+              {resendTimer > 0
+                ? `Resend in ${resendTimer}s`
+                : "Resend Email"}
+            </button> */}
+            <button
+              onClick={() => {
+                setEmailSent(false);
+                setIsLogin(true);
+                setIsForgot(false);
+              }}
+              className="block mx-auto text-gray-600 hover:text-emerald-700"
+            >
+              Back to Login
+            </button>
+          </div>
+        )}
+
+        {/* FORGOT PASSWORD */}
+        {isForgot && !emailSent && (
+          <form onSubmit={handleForgotSubmit} className="space-y-4">
+            <h2 className="text-xl font-semibold text-center">
+              Reset your password
+            </h2>
+            <input
+              type="email"
+              placeholder="Enter your registered email"
+              value={resetData.email}
+              onChange={(e) =>
+                setResetData({ ...resetData, email: e.target.value })
+              }
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              required
+            />
+            <button
+              type="submit"
+              disabled={isBusy}
+              className={`w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-3 rounded-xl font-semibold transform transition-all duration-200 shadow-lg ${
+                isBusy
+                  ? "opacity-70 cursor-not-allowed"
+                  : "hover:from-emerald-600 hover:to-teal-700 hover:scale-[1.02]"
+              }`}
+            >
+              {isBusy ? "Sending..." : "Send Reset Link"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsLogin(true)}
+              className="text-sm text-gray-600 hover:text-emerald-700 text-center block mx-auto"
+            >
+              Back to Login
+            </button>
+          </form>
+        )}
+
+        {/* RESET PASSWORD */}
+        {isReset && (
+          <form onSubmit={handleResetSubmit} className="space-y-4">
+            <h2 className="text-xl font-semibold text-center">
+              Create New Password
+            </h2>
+            <input
+              type="password"
+              placeholder="New Password"
+              value={resetData.newPassword}
+              onChange={(e) =>
+                setResetData({ ...resetData, newPassword: e.target.value })
+              }
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              required
+            />
+            <input
+              type="password"
+              placeholder="Confirm New Password"
+              value={resetData.confirmPassword}
+              onChange={(e) =>
+                setResetData({
+                  ...resetData,
+                  confirmPassword: e.target.value,
+                })
+              }
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+              required
+            />
+            <button
+              type="submit"
+              disabled={isBusy}
+              className={`w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-3 rounded-xl font-semibold transform transition-all duration-200 shadow-lg ${
+                isBusy
+                  ? "opacity-70 cursor-not-allowed"
+                  : "hover:from-emerald-600 hover:to-teal-700 hover:scale-[1.02]"
+              }`}
+            >
+              {isBusy ? "Resetting..." : "Reset Password"}
+            </button>
+          </form>
+        )}
+
+        {/* TOGGLE SIGNUP/LOGIN */}
+        {!isForgot && !isReset && !emailSent && (
+          <div className="text-center mt-6">
+            <button
+              onClick={() => setIsLogin(!isLogin)}
+              className="text-emerald-600 hover:text-emerald-700 font-medium transition-colors"
+            >
+              {isLogin
+                ? "Don't have an account? Sign up"
+                : "Already have an account? Sign in"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+
+
+
+
+
+// Sidebar Component
+const Sidebar = ({ activeTab, setActiveTab, user, isMobileOpen, setIsMobileOpen }) => {
+  const { logout } = useAuth();
+  
+  const getMenuItems = (role) => {
+    const commonItems = [
+      { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+      { id: 'chat', label: 'Messages', icon: MessageSquare },
+    ];
+    
+    if (role === 'student') {
+      return [
+        ...commonItems,
+        { id: 'profile', label: 'My Profile', icon: User },
+        { id: 'study', label: 'Study Content', icon: BookOpen },
+        { id: 'quiz', label: 'Quizzes', icon: PenTool },
+        { id: 'dynamic-quiz', label: 'Custom Quiz', icon: Brain },
+        { id: 'ask', label: 'Ask AI', icon: Brain },
+        { id: 'notes', label: 'My Notes', icon: BookOpen },
+        { id: 'my-pdfs', label: 'My PDFs', icon: Upload },
+        { id: 'learning-path', label: 'Learning Path', icon: Brain },
+        { id: 'subscription', label: 'Subscription', icon: GraduationCap },
+      ];
+    }
+    
+    if (role === 'teacher') {
+      return [
+        ...commonItems,
+        { id: 'create-content', label: 'Create Content', icon: BookOpen },
+        { id: 'create-quiz', label: 'Create Quiz', icon: PenTool },
+        { id: 'upload-materials', label: 'Upload Materials', icon: Upload },
+        { id: 'whatsapp', label: 'WhatsApp Monitor', icon: MessageCircle },
+        { id: 'students', label: 'Students', icon: Users },
+      ];
+    }
+    
+    if (role === 'parent') {
+      return [
+        ...commonItems,
+        { id: 'children', label: 'My Children', icon: Users },
+        { id: 'progress', label: 'Progress Reports', icon: BarChart3 },
+      ];
+    }
+
+    if (role === 'admin') {
+      return [
+        { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+        { id: 'admin-users', label: 'User Management', icon: ShieldCheck },
+      ];
+    }
+    
+    return commonItems;
+  };
+
+  const menuItems = getMenuItems(user?.role);
+
+  return (
+    <>
+      {/* Mobile Overlay */}
+      {isMobileOpen && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          onClick={() => setIsMobileOpen(false)}
+        />
+      )}
+      
+      {/* Sidebar */}
+      <div className={`
+        fixed left-0 top-0 h-full bg-white shadow-xl z-50 w-64 transform transition-transform duration-300
+        overflow-y-auto
+        lg:relative lg:translate-x-0 lg:z-0
+        ${isMobileOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
+        <div className="p-6 border-b">
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col items-center space-y-2">
+              <div className="w-36 h-20 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl mx-auto mb-2 overflow-hidden">
+                <img
+                  src={edumatelogo}
+                  alt="Logo"
+                  className="object-cover w-full h-full scale-140 rounded-md"
+                />
+              </div>
+              <p className="text-sm text-gray-600 capitalize text-center">{user?.role}</p>
+            </div>
+
+            <button
+              onClick={() => setIsMobileOpen(false)}
+              className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+        
+        <nav className="flex-1 p-4">
+          <ul className="space-y-2">
+            {menuItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <li key={item.id}>
+                  <button
+                    onClick={() => {
+                      setActiveTab(item.id);
+                      setIsMobileOpen(false);
+                    }}
+                    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-left transition-all ${
+                      activeTab === item.id
+                        ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg'
+                        : 'text-gray-600 hover:bg-emerald-50 hover:text-emerald-700'
+                    }`}
+                    data-testid={`sidebar-${item.id}`}
+                  >
+                    <Icon className="w-5 h-5" />
+                    <span className="font-medium">{item.label}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+        
+        <div className="p-4 border-t">
+          <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-xl mb-3">
+            <User className="w-8 h-8 text-gray-600" />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-sm truncate">{user?.name}</p>
+              <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+            </div>
+          </div>
+          
+          <button
+            onClick={logout}
+            className="w-full flex items-center space-x-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-all"
+            data-testid="logout-button"
+          >
+            <LogOut className="w-5 h-5" />
+            <span className="font-medium">Logout</span>
+          </button>
+        </div>
+      </div>
+    </>
+  );
+};
+
+// Dashboard Components for each role
+const StudentDashboard = () => {
+  const [dashboardData, setDashboardData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      const response = await axios.get('/dashboard/student');
+      setDashboardData(response.data);
+    } catch (error) {
+      toast.error('Failed to load dashboard');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="p-6">Loading dashboard...</div>;
+  }
+
+  return (
+    <div className="p-6 space-y-6" data-testid="student-dashboard">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, {dashboardData?.user?.name}!</h1>
+        <p className="text-gray-600">Continue your learning journey with AI-powered assistance</p>
+      </div>
+
+      {dashboardData?.access_status && (
+        <div className={`rounded-xl p-4 border ${
+          dashboardData.access_status.status === 'ACTIVE_SUBSCRIPTION'
+            ? 'bg-green-50 border-green-200'
+            : dashboardData.access_status.status === 'TRIAL_ACTIVE'
+            ? 'bg-blue-50 border-blue-200'
+            : dashboardData.access_status.status === 'BLOCKED'
+            ? 'bg-red-50 border-red-200'
+            : 'bg-yellow-50 border-yellow-200'
+        }`}>
+          <p className="font-semibold text-gray-900">Access Status: {dashboardData.access_status.status.replaceAll('_', ' ')}</p>
+          <p className="text-sm text-gray-700">{dashboardData.access_status.message}</p>
+          {dashboardData.access_status.status === 'PAYMENT_REQUIRED' && (
+            <p className="text-sm text-yellow-800 mt-2">Open the Subscription tab to continue using the app.</p>
+          )}
+        </div>
+      )}
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-blue-100 text-sm">Quizzes Completed</p>
+              <p className="text-3xl font-bold">{dashboardData?.quick_stats?.total_quizzes_taken || 0}</p>
+            </div>
+            <PenTool className="w-8 h-8 text-blue-200" />
+          </div>
+        </div>
+        
+        <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-2xl p-6 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-emerald-100 text-sm">Questions Asked</p>
+              <p className="text-3xl font-bold">{dashboardData?.quick_stats?.questions_asked || 0}</p>
+            </div>
+            <Brain className="w-8 h-8 text-emerald-200" />
+          </div>
+        </div>
+        
+        <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl p-6 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-purple-100 text-sm">Study Materials</p>
+              <p className="text-3xl font-bold">{dashboardData?.available_content?.length || 0}</p>
+            </div>
+            <BookOpen className="w-8 h-8 text-purple-200" />
+          </div>
+        </div>
+      </div>
+
+      {/* Recent Activities */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-2xl shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4">Recent Quiz Results</h3>
+          {dashboardData?.recent_quiz_attempts?.length ? (
+            <div className="space-y-3">
+              {dashboardData.recent_quiz_attempts.slice(0, 5).map((attempt, idx) => (
+                <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium">Quiz #{attempt.quiz_id.slice(-6)}</p>
+                    <p className="text-sm text-gray-600">Completed: {new Date(attempt.completed_at).toLocaleDateString()}</p>
+                  </div>
+                  <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                    attempt.percentage >= 80 ? 'bg-green-100 text-green-800' :
+                    attempt.percentage >= 60 ? 'bg-yellow-100 text-yellow-800' :
+                    'bg-red-100 text-red-800'
+                  }`}>
+                    {Math.round(attempt.percentage)}%
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500">No quizzes taken yet. Start with your first quiz!</p>
+          )}
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4">Available Quizzes</h3>
+          {dashboardData?.available_quizzes?.length ? (
+            <div className="space-y-3">
+              {dashboardData.available_quizzes.slice(0, 5).map((quiz, idx) => (
+                <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                  <div>
+                    <p className="font-medium">{quiz.title}</p>
+                    <p className="text-sm text-gray-600">{quiz.subject} • {quiz.questions.length} questions</p>
+                  </div>
+                  <button className="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm hover:bg-emerald-600 transition-colors">
+                    Take Quiz
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500">No quizzes available yet.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const TeacherDashboard = () => {
+  const [dashboardData, setDashboardData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      const response = await axios.get('/dashboard/teacher');
+      setDashboardData(response.data);
+    } catch (error) {
+      toast.error('Failed to load dashboard');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="p-6">Loading dashboard...</div>;
+  }
+
+  return (
+    <div className="p-6 space-y-6" data-testid="teacher-dashboard">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Teacher Dashboard</h1>
+        <p className="text-gray-600">Manage your content and track student progress</p>
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 rounded-2xl p-6 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-indigo-100 text-sm">Content Created</p>
+              <p className="text-3xl font-bold">{dashboardData?.stats?.total_content_created || 0}</p>
+            </div>
+            <BookOpen className="w-8 h-8 text-indigo-200" />
+          </div>
+        </div>
+        
+        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-2xl p-6 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-green-100 text-sm">Quizzes Created</p>
+              <p className="text-3xl font-bold">{dashboardData?.stats?.total_quizzes_created || 0}</p>
+            </div>
+            <PenTool className="w-8 h-8 text-green-200" />
+          </div>
+        </div>
+        
+        <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-2xl p-6 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-orange-100 text-sm">Student Attempts</p>
+              <p className="text-3xl font-bold">{dashboardData?.stats?.total_student_attempts || 0}</p>
+            </div>
+            <Users className="w-8 h-8 text-orange-200" />
+          </div>
+        </div>
+      </div>
+
+      {/* Content Management */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-2xl shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4">My Content</h3>
+          {dashboardData?.my_content?.length ? (
+            <div className="space-y-3">
+              {dashboardData.my_content.slice(0, 5).map((content, idx) => (
+                <div key={idx} className="p-3 bg-gray-50 rounded-lg">
+                  <p className="font-medium">{content.title}</p>
+                  <p className="text-sm text-gray-600">{content.subject} • {content.grade_level}</p>
+                  <p className="text-xs text-gray-500">Created: {new Date(content.created_at).toLocaleDateString()}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500">No content created yet. Start creating study materials!</p>
+          )}
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4">My Quizzes</h3>
+          {dashboardData?.my_quizzes?.length ? (
+            <div className="space-y-3">
+              {dashboardData.my_quizzes.slice(0, 5).map((quiz, idx) => (
+                <div key={idx} className="p-3 bg-gray-50 rounded-lg">
+                  <p className="font-medium">{quiz.title}</p>
+                  <p className="text-sm text-gray-600">{quiz.subject} • {quiz.questions.length} questions</p>
+                  <p className="text-xs text-gray-500">Created: {new Date(quiz.created_at).toLocaleDateString()}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500">No quizzes created yet. Create your first quiz!</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, ArcElement, Title, Tooltip, Legend);
+
+const ParentDashboard = () => {
+  const [dashboardData, setDashboardData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const fetchDashboardData = async () => {
+    try {
+      const response = await axios.get('/dashboard/parent');
+      setDashboardData(response.data);
+    } catch (error) {
+      toast.error('Failed to load dashboard');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const handleAddChildSuccess = () => {
+    fetchDashboardData();
+  };
+
+  if (loading) return <div className="p-6">Loading dashboard...</div>;
+
+  const progressChartData = {
+    labels: dashboardData?.student_progress?.map(p => p.student.name) || [],
+    datasets: [{
+      label: 'Average Score (%)',
+      data: dashboardData?.student_progress?.map(p => p.progress.average_score) || [],
+      backgroundColor: 'rgba(54, 162, 235, 0.5)',
+    }]
+  };
+
+  return (
+    <div className="p-6 space-y-6" data-testid="parent-dashboard">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Parent Dashboard</h1>
+          <p className="text-gray-600">Monitor your children's learning progress</p>
+        </div>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+        >
+          Add Child
+        </button>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border p-6">
+        <h3 className="text-lg font-semibold mb-4">My Children</h3>
+        {dashboardData?.students?.length ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {dashboardData.students.map((student, idx) => (
+              <div key={idx} className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100">
+                <div className="flex items-center space-x-3">
+                  <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
+                    <User className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <p className="font-medium">{student.name}</p>
+                    <p className="text-sm text-gray-600">{student.email}</p>
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-blue-200">
+                  <button className="text-blue-600 text-sm font-medium hover:text-blue-700">
+                    View Progress →
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-gray-500">No children linked. Click "Add Child" to get started.</p>
+        )}
+      </div>
+
+      {dashboardData?.student_progress?.length && (
+        <div className="bg-white rounded-2xl shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4">Progress Insights</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h4 className="font-medium mb-2">Average Scores</h4>
+              <Bar data={progressChartData} />
+            </div>
+            <div>
+              <h4 className="font-medium mb-2">Recent Activities</h4>
+              <ul className="space-y-2">
+                {dashboardData.student_progress.map((item, idx) => (
+                  <li key={idx} className="text-sm">
+                    {item.student.name}: {item.progress.total_quizzes} quizzes, {item.progress.total_questions_asked} questions.
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <AddChildModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={handleAddChildSuccess}
+      />
+    </div>
+  );
+};
+
+
+// Study Content Component
+const StudyContent = () => {
+  const [content, setContent] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState({ subject: '', grade_level: '' });
+
+  // For Preview Modal
+  const [previewItem, setPreviewItem] = useState(null);
+
+  useEffect(() => {
+    fetchContent();
+  }, [filters]);
+
+  const fetchContent = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.subject) params.append('subject', filters.subject);
+      if (filters.grade_level) params.append('grade_level', filters.grade_level);
+      
+      const response = await axios.get(`/study/content?${params}`);
+      setContent(response.data);
+    } catch (error) {
+      toast.error('Failed to load content');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) return <div className="p-6">Loading content...</div>;
+
+  return (
+    <div className="p-6 space-y-6">
+
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold text-gray-900">Study Content</h1>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white rounded-xl p-4 shadow-sm border">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <select
+            value={filters.subject}
+            onChange={(e) => setFilters({ ...filters, subject: e.target.value })}
+            className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          >
+            <option value="">All Subjects</option>
+            <option value="Accountancy">Accountancy</option>
+            <option value="Arts">Arts</option>
+            <option value="Bangla">Bangla</option>
+            <option value="Biology">Biology</option>
+            <option value="Business Studies">Business Studies</option>
+            <option value="C++">C++</option>
+            <option value="Chemistry">Chemistry</option>
+            <option value="Civics">Civics</option>
+            <option value="English">English</option>
+            <option value="History">History</option>
+            <option value="Indian Economics">Indian Economics</option>
+            <option value="Information Practices">Information Practices</option>
+            <option value="Macro Economics">Macro Economics</option>
+            <option value="Mathematics">Mathematics</option>
+            <option value="Micro Economics">Micro Economics</option>
+            <option value="Notes">Notes</option>
+            <option value="Physics">Physics</option>
+            <option value="Political Science">Political Science</option>
+            <option value="Psychology">Psychology</option>
+            <option value="Sanskrit">Sanskrit</option>
+            <option value="Science">Science</option>
+            <option value="Social Studies">Social Studies</option>
+            <option value="Sociology">Sociology</option>
+          </select>
+
+          <select
+            value={filters.grade_level}
+            onChange={(e) => setFilters({ ...filters, grade_level: e.target.value })}
+            className="px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          >
+            <option value="">All Grades</option>
+            <option value="Grade 6">Grade 6</option>
+            <option value="Grade 7">Grade 7</option>
+            <option value="Grade 8">Grade 8</option>
+            <option value="Grade 9">Grade 9</option>
+            <option value="Grade 10">Grade 10</option>
+            <option value="Grade 11">Grade 11</option>
+            <option value="Grade 12">Grade 12</option>
+            <option value="University Level">University Level</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Content List */}
+      <div className="grid grid-cols-1 gap-6">
+        {content.length > 0 ? (
+          content.map((item, idx) => (
+            <div key={idx} className="bg-white rounded-xl p-6 shadow-sm border">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">{item.title}</h3>
+                  <p className="text-gray-600">{item.subject} • {item.grade_level}</p>
+                </div>
+                <div className="text-xs text-gray-500">
+                  {new Date(item.created_at).toLocaleDateString()}
+                </div>
+              </div>
+
+              <div className="prose max-w-none text-gray-700">
+                {item.content.substring(0, 300)}...
+              </div>
+
+              <div className="flex items-center justify-between mt-4">
+                <div className="flex flex-wrap gap-2">
+                  {item.tags.map((tag, tagIdx) => (
+                    <span
+                      key={tagIdx}
+                      className="px-2 py-1 bg-emerald-100 text-emerald-800 text-xs rounded-full"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setPreviewItem(item)}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                >
+                  Preview
+                </button>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="text-center py-12">
+            <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg">No study content available</p>
+            <p className="text-gray-400">Check back later for new content</p>
+          </div>
+        )}
+      </div>
+
+      {/* Preview Modal */}
+      {previewItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-3xl w-full p-6 shadow-lg overflow-y-auto max-h-[80vh]">
+
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h2 className="text-2xl font-bold">{previewItem.title}</h2>
+                <p className="text-gray-600">
+                  {previewItem.subject} • {previewItem.grade_level}
+                </p>
+              </div>
+
+              <button
+                onClick={() => setPreviewItem(null)}
+                className="text-gray-600 hover:text-gray-900 text-xl"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="prose max-w-none text-gray-700 whitespace-pre-line">
+              {previewItem.content}
+            </div>
+
+            <div className="flex flex-wrap gap-2 mt-6">
+              {previewItem.tags.map((tag, idx) => (
+                <span
+                  key={idx}
+                  className="px-2 py-1 bg-emerald-100 text-emerald-800 text-xs rounded-full"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+
+            <div className="mt-6 text-right">
+              <button
+                onClick={() => setPreviewItem(null)}
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition"
+              >
+                Close
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
+// Quiz System Component
+const QuizSystem = () => {
+  const [quizzes, setQuizzes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedQuiz, setSelectedQuiz] = useState(null);
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [answers, setAnswers] = useState({});
+  const [quizResult, setQuizResult] = useState(null);
+  const [quizAnalysis, setQuizAnalysis] = useState(null);
+
+  useEffect(() => {
+    fetchQuizzes();
+  }, []);
+
+  const fetchQuizzes = async () => {
+    try {
+      const response = await axios.get('/quiz/list');
+      setQuizzes(response.data || []);
+    } catch (error) {
+      console.error('Quiz fetch error:', error);
+      toast.error('Failed to load quizzes');
+      setQuizzes([]); // Set empty array as fallback
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startQuiz = (quiz) => {
+    setSelectedQuiz(quiz);
+    setCurrentQuestion(0);
+    setAnswers({});
+    setQuizResult(null);
+    setQuizAnalysis(null);
+  };
+
+  const selectAnswer = (questionIndex, optionIndex) => {
+    setAnswers({...answers, [questionIndex]: optionIndex});
+  };
+
+  const nextQuestion = () => {
+    if (currentQuestion < selectedQuiz.questions.length - 1) {
+      setCurrentQuestion(currentQuestion + 1);
+    }
+  };
+
+  const previousQuestion = () => {
+    if (currentQuestion > 0) {
+      setCurrentQuestion(currentQuestion - 1);
+    }
+  };
+
+  const submitQuiz = async () => {
+    try {
+      const response = await axios.post(`/quiz/${selectedQuiz.id}/attempt`, answers);
+      setQuizResult(response.data);
+      
+      // Fetch quiz analysis
+      try {
+        const analysisResponse = await axios.get(`/quiz/analysis/${response.data.id}`);
+        setQuizAnalysis(analysisResponse.data);
+      } catch (analysisError) {
+        console.error('Analysis fetch error:', analysisError);
+      }
+      
+      toast.success('Quiz submitted successfully!');
+    } catch (error) {
+      console.error('Quiz submission error:', error);
+      toast.error('Failed to submit quiz');
+    }
+  };
+
+  const backToQuizList = () => {
+    setSelectedQuiz(null);
+    setQuizResult(null);
+    setQuizAnalysis(null);
+    fetchQuizzes(); // Refresh quiz list
+  };
+
+  if (loading) return <div className="p-6">Loading quizzes...</div>;
+
+  // Quiz Results View
+  if (quizResult) {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Quiz Completed!</h2>
+            <div className={`text-4xl font-bold mb-2 ${quizResult.percentage >= 70 ? 'text-green-600' : quizResult.percentage >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+              {quizResult.percentage.toFixed(1)}%
+            </div>
+            <p className="text-gray-600">{quizResult.score} out of {quizResult.total_marks} correct</p>
+          </div>
+
+          {/* AI Analysis Results */}
+          {quizAnalysis && (
+            <div className="mt-6 space-y-4">
+              <h3 className="text-xl font-semibold text-gray-900">AI Analysis & Recommendations</h3>
+              
+              {quizAnalysis.analysis_data.performance_summary && (
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-blue-900 mb-2">Performance Summary</h4>
+                  <p className="text-blue-800">{quizAnalysis.analysis_data.performance_summary}</p>
+                </div>
+              )}
+
+              {quizAnalysis.insights && quizAnalysis.insights.length > 0 && (
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-green-900 mb-2">Key Insights</h4>
+                  <ul className="text-green-800 space-y-1">
+                    {quizAnalysis.insights.map((insight, idx) => (
+                      <li key={idx}>• {insight}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {quizAnalysis.recommendations && quizAnalysis.recommendations.length > 0 && (
+                <div className="bg-orange-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-orange-900 mb-2">Recommendations</h4>
+                  <ul className="text-orange-800 space-y-1">
+                    {quizAnalysis.recommendations.map((rec, idx) => (
+                      <li key={idx}>• {rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="bg-purple-50 p-4 rounded-lg">
+                <h4 className="font-medium text-purple-900 mb-2">Performance Trend</h4>
+                <p className="text-purple-800 capitalize">{quizAnalysis.performance_trend}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="flex space-x-4 mt-6">
+            <button
+              onClick={backToQuizList}
+              className="flex-1 bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 transition-colors"
+            >
+              Back to Quizzes
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Quiz Taking View
+  if (selectedQuiz) {
+    const question = selectedQuiz.questions[currentQuestion];
+    const progress = ((currentQuestion + 1) / selectedQuiz.questions.length) * 100;
+
+    return (
+      <div className="p-6 space-y-6">
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">{selectedQuiz.title}</h2>
+            <button
+              onClick={backToQuizList}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              ← Back
+            </button>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="mb-6">
+            <div className="flex justify-between text-sm text-gray-600 mb-2">
+              <span>Question {currentQuestion + 1} of {selectedQuiz.questions.length}</span>
+              <span>{progress.toFixed(0)}% Complete</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-emerald-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              ></div>
+            </div>
+          </div>
+
+          {/* Question */}
+          <div className="mb-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">{question.question}</h3>
+            <div className="space-y-3">
+              {question.options.map((option, optionIndex) => (
+                <label key={optionIndex} className="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name={`question-${currentQuestion}`}
+                    value={optionIndex}
+                    checked={answers[currentQuestion] === optionIndex}
+                    onChange={() => selectAnswer(currentQuestion, optionIndex)}
+                    className="mr-3"
+                  />
+                  <span className="text-gray-800">{option}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Navigation */}
+          <div className="flex justify-between">
+            <button
+              onClick={previousQuestion}
+              disabled={currentQuestion === 0}
+              className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            
+            {currentQuestion === selectedQuiz.questions.length - 1 ? (
+              <button
+                onClick={submitQuiz}
+                className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+              >
+                Submit Quiz
+              </button>
+            ) : (
+              <button
+                onClick={nextQuestion}
+                className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+              >
+                Next
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Quiz List View
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold text-gray-900">Available Quizzes</h1>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {quizzes.length > 0 ? (
+          quizzes.map((quiz, idx) => (
+            <div key={quiz.id || idx} className="bg-white rounded-xl p-6 shadow-sm border hover:shadow-lg transition-shadow">
+              <div className="mb-4">
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">{quiz.title}</h3>
+                <p className="text-gray-600">{quiz.subject} • {quiz.grade_level}</p>
+              </div>
+              
+              <div className="space-y-2 mb-4">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Questions:</span>
+                  <span className="font-medium">{quiz.questions ? quiz.questions.length : 0}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Time Limit:</span>
+                  <span className="font-medium">{quiz.time_limit || 30} min</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Total Marks:</span>
+                  <span className="font-medium">{quiz.total_marks || (quiz.questions ? quiz.questions.length : 0)}</span>
+                </div>
+              </div>
+              
+              <button
+                onClick={() => startQuiz(quiz)}
+                className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 transition-colors"
+              >
+                Take Quiz
+              </button>
+            </div>
+          ))
+        ) : (
+          <div className="col-span-full text-center py-12">
+            <PenTool className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg">No quizzes available</p>
+            <p className="text-gray-400">Ask your teacher to create some quizzes</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Dynamic Quiz Component
+const DynamicQuiz = () => {
+  const [step, setStep] = useState('create'); // 'create', 'taking', 'result'
+  const [quizRequest, setQuizRequest] = useState({
+    subject: 'Mathematics',
+    topic: '',
+    difficulty: 'medium',
+    num_questions: 5,
+    grade_level: 'Grade 8'
+  });
+  const [generatedQuiz, setGeneratedQuiz] = useState(null);
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [studentAnswers, setStudentAnswers] = useState({});
+  const [evaluation, setEvaluation] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [myAttempts, setMyAttempts] = useState([]);
+
+  useEffect(() => {
+    fetchMyAttempts();
+  }, []);
+
+  const fetchMyAttempts = async () => {
+    try {
+      const response = await axios.get('/quiz/my-dynamic-attempts');
+      setMyAttempts(response.data.evaluations || []);
+    } catch (error) {
+      console.error('Failed to load attempts:', error);
+    }
+  };
+
+  const generateQuiz = async () => {
+    if (!quizRequest.topic.trim()) {
+      toast.error('Please enter a topic for the quiz');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await axios.post('/quiz/generate-dynamic', quizRequest);
+      setGeneratedQuiz(response.data.quiz);
+      setStep('taking');
+      setCurrentQuestion(0);
+      setStudentAnswers({});
+      toast.success('Quiz generated successfully!');
+    } catch (error) {
+      console.error('Quiz generation error:', error);
+      toast.error('Failed to generate quiz');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectAnswer = (questionNumber, answer) => {
+    setStudentAnswers({
+      ...studentAnswers,
+      [questionNumber]: answer
+    });
+  };
+
+  const submitQuiz = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.post(`/quiz/submit-dynamic/${generatedQuiz.id}`, studentAnswers);
+      setEvaluation(response.data.evaluation);
+      setStep('result');
+      
+      if (response.data.email_sent) {
+        toast.success('Quiz submitted! Check your email for detailed report.');
+      } else {
+        toast.success('Quiz submitted successfully!');
+      }
+      
+      fetchMyAttempts(); // Refresh attempts list
+    } catch (error) {
+      console.error('Quiz submission error:', error);
+      toast.error('Failed to submit quiz');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startNewQuiz = () => {
+    setStep('create');
+    setQuizRequest({
+      subject: 'Mathematics',
+      topic: '',
+      difficulty: 'medium',
+      num_questions: 5,
+      grade_level: 'Grade 8'
+    });
+    setGeneratedQuiz(null);
+    setCurrentQuestion(0);
+    setStudentAnswers({});
+    setEvaluation(null);
+  };
+
+  // Quiz Creation Step
+  if (step === 'create') {
+    return (
+      <div className="p-6 space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Custom Quiz</h1>
+          <p className="text-gray-600">Generate personalized quizzes with AI based on any topic you want to study</p>
+        </div>
+
+        {/* Quiz Configuration */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Quiz Configuration</h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+              <select
+                value={quizRequest.subject}
+                onChange={(e) => setQuizRequest({...quizRequest, subject: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="Accountancy">Accountancy</option>
+                <option value="Arts">Arts</option>
+                <option value="Bangla">Bangla</option>
+                <option value="Biology">Biology</option>
+                <option value="Business Studies">Business Studies</option>
+                <option value="C++">C++</option>
+                <option value="Chemistry">Chemistry</option>
+                <option value="Civics">Civics</option>
+                <option value="English">English</option>
+                <option value="History">History</option>
+                <option value="Indian Economics">Indian Economics</option>
+                <option value="Information Practices">Information Practices</option>
+                <option value="Macro Economics">Macro Economics</option>
+                <option value="Mathematics">Mathematics</option>
+                <option value="Micro Economics">Micro Economics</option>
+                <option value="Notes">Notes</option>
+                <option value="Physics">Physics</option>
+                <option value="Political Science">Political Science</option>
+                <option value="Psychology">Psychology</option>
+                <option value="Sanskrit">Sanskrit</option>
+                <option value="Science">Science</option>
+                <option value="Social Studies">Social Studies</option>
+                <option value="Sociology">Sociology</option>
+
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
+              <select
+                value={quizRequest.grade_level}
+                onChange={(e) => setQuizRequest({...quizRequest, grade_level: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="Grade 6">Grade 6</option>
+                <option value="Grade 7">Grade 7</option>
+                <option value="Grade 8">Grade 8</option>
+                <option value="Grade 9">Grade 9</option>
+                <option value="Grade 10">Grade 10</option>
+                <option value="Grade 11">Grade 11</option>
+                <option value="Grade 12">Grade 12</option>
+                <option value="University Level">University Level</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Difficulty Level</label>
+              <select
+                value={quizRequest.difficulty}
+                onChange={(e) => setQuizRequest({...quizRequest, difficulty: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Number of Questions</label>
+              <select
+                value={quizRequest.num_questions}
+                onChange={(e) => setQuizRequest({...quizRequest, num_questions: parseInt(e.target.value)})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value={5}>5 Questions</option>
+                <option value={6}>6 Questions</option>
+                <option value={7}>7 Questions</option>
+                <option value={8}>8 Questions</option>
+                <option value={9}>9 Questions</option>
+                <option value={10}>10 Questions</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Topic *</label>
+            <input
+              type="text"
+              value={quizRequest.topic}
+              onChange={(e) => setQuizRequest({...quizRequest, topic: e.target.value})}
+              placeholder="Enter the specific topic (e.g., 'Quadratic Equations', 'Cell Biology', 'World War II')"
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            />
+            <p className="text-sm text-gray-500 mt-1">Be specific! Example: Instead of 'Math', use 'Algebra - Linear Equations'</p>
+          </div>
+
+          <button
+            onClick={generateQuiz}
+            disabled={loading || !quizRequest.topic.trim()}
+            className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? 'Generating Quiz with AI...' : 'Generate Quiz'}
+          </button>
+        </div>
+
+        {/* Previous Attempts */}
+        {myAttempts.length > 0 && (
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Quiz Attempts</h3>
+            <div className="space-y-3">
+              {myAttempts.slice(0, 5).map((attempt, idx) => (
+                <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium">{attempt.quiz_data?.quiz_title || 'Custom Quiz'}</p>
+                    <p className="text-sm text-gray-600">
+                      {attempt.quiz_data?.subject} • {attempt.quiz_data?.difficulty}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className={`font-bold ${attempt.percentage >= 70 ? 'text-green-600' : 'text-red-600'}`}>
+                      {attempt.percentage?.toFixed(1)}%
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {new Date(attempt.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Quiz Taking Step
+  if (step === 'taking' && generatedQuiz) {
+    const question = generatedQuiz.questions[currentQuestion];
+    const progress = ((currentQuestion + 1) / generatedQuiz.questions.length) * 100;
+
+    return (
+      <div className="p-6 space-y-6">
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">{generatedQuiz.quiz_title}</h2>
+              <p className="text-gray-600">{generatedQuiz.subject} • {generatedQuiz.difficulty} • {generatedQuiz.grade_level}</p>
+            </div>
+            <button
+              onClick={startNewQuiz}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              ← Back to Create
+            </button>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="mb-6">
+            <div className="flex justify-between text-sm text-gray-600 mb-2">
+              <span>Question {currentQuestion + 1} of {generatedQuiz.questions.length}</span>
+              <span>{progress.toFixed(0)}% Complete</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-emerald-500 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              ></div>
+            </div>
+          </div>
+
+          {/* Question */}
+          <div className="mb-6">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">
+              {question.question_number}. {question.question}
+            </h3>
+            <div className="space-y-3">
+              {Object.entries(question.options).map(([optionKey, optionText]) => (
+                <label key={optionKey} className="flex items-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name={`question-${currentQuestion}`}
+                    value={optionKey}
+                    checked={studentAnswers[question.question_number] === optionKey}
+                    onChange={() => selectAnswer(question.question_number, optionKey)}
+                    className="mr-3"
+                  />
+                  <span className="font-medium mr-2">{optionKey}.</span>
+                  <span className="text-gray-800">{optionText}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Navigation */}
+          <div className="flex justify-between">
+            <button
+              onClick={() => setCurrentQuestion(currentQuestion - 1)}
+              disabled={currentQuestion === 0}
+              className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            
+            {currentQuestion === generatedQuiz.questions.length - 1 ? (
+              <button
+                onClick={submitQuiz}
+                disabled={loading}
+                className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50"
+              >
+                {loading ? 'Evaluating...' : 'Submit Quiz'}
+              </button>
+            ) : (
+              <button
+                onClick={() => setCurrentQuestion(currentQuestion + 1)}
+                className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+              >
+                Next
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Results Step
+  if (step === 'result' && evaluation) {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Quiz Results</h2>
+            <div className={`text-4xl font-bold mb-2 ${evaluation.percentage >= 70 ? 'text-green-600' : evaluation.percentage >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+              {evaluation.percentage?.toFixed(1)}%
+            </div>
+            <p className="text-gray-600">{evaluation.score} out of {evaluation.total_questions} correct</p>
+            <p className="text-lg font-medium mt-2">
+              {evaluation.percentage >= 90 ? '🎉 Excellent Work!' : 
+               evaluation.percentage >= 70 ? '👍 Good Job!' : 
+               evaluation.percentage >= 50 ? '📚 Keep Practicing!' : 
+               '💪 Don\'t Give Up!'}
+            </p>
+          </div>
+
+          {/* AI Evaluation */}
+          <div className="space-y-4">
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <h4 className="font-medium text-blue-900 mb-2">📊 AI Evaluation Report</h4>
+              <p className="text-blue-800">{evaluation.evaluation_report}</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-green-50 p-4 rounded-lg">
+                <h4 className="font-medium text-green-900 mb-2">💪 Your Strengths</h4>
+                <ul className="text-green-800 space-y-1">
+                  {evaluation.strengths?.map((strength, idx) => (
+                    <li key={idx}>• {strength}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="bg-orange-50 p-4 rounded-lg">
+                <h4 className="font-medium text-orange-900 mb-2">📈 Areas to Improve</h4>
+                <ul className="text-orange-800 space-y-1">
+                  {evaluation.weaknesses?.map((weakness, idx) => (
+                    <li key={idx}>• {weakness}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            <div className="bg-purple-50 p-4 rounded-lg">
+              <h4 className="font-medium text-purple-900 mb-2">💡 Recommendations</h4>
+              <ul className="text-purple-800 space-y-1">
+                {evaluation.recommendations?.map((rec, idx) => (
+                  <li key={idx}>• {rec}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div className="flex space-x-4 mt-6">
+            <button
+              onClick={startNewQuiz}
+              className="flex-1 bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 transition-colors"
+            >
+              Create New Quiz
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return <div className="p-6">Loading...</div>;
+};
+
+// Ask AI Component
+const AskAI = () => {
+  const [question, setQuestion] = useState('');
+  const [subject, setSubject] = useState('Mathematics');
+  const [gradeLevel, setGradeLevel] = useState('Grade 8');
+  const [queryType, setQueryType] = useState('rag'); // 'rag' or 'general'
+  const [loading, setLoading] = useState(false);
+  const [conversation, setConversation] = useState([]);
+  const [availableMaterials, setAvailableMaterials] = useState([]);
+
+  useEffect(() => {
+    fetchAvailableMaterials();
+  }, []);
+
+  const fetchAvailableMaterials = async () => {
+    try {
+      const response = await axios.get('/materials/available');
+      const teacherMaterials = response.data.teacher_materials || [];
+      const myPdfs = response.data.my_pdfs || [];
+      setAvailableMaterials([...teacherMaterials, ...myPdfs]);
+    } catch (error) {
+      console.error('Failed to load materials:', error);
+    }
+  };
+
+  const askQuestion = async () => {
+    if (!question.trim()) return;
+
+    setLoading(true);
+    try {
+      let response;
+      
+      if (queryType === 'rag') {
+        // Use RAG system for course material-based answers
+        response = await axios.post('/rag/ask', {
+          question: question,
+          subject: subject,
+          grade_level: gradeLevel
+        });
+      } else {
+        // Use general AI for broader questions
+        response = await axios.post('/qa/ask', {
+          question: question,
+          subject: subject
+        });
+      }
+
+      setConversation(prev => [
+        ...prev,
+        { 
+          type: 'question', 
+          text: question, 
+          timestamp: new Date(),
+          queryType: queryType
+        },
+        { 
+          type: 'answer', 
+          text: response.data.answer, 
+          timestamp: new Date(),
+          source: queryType === 'rag' ? 'course_materials' : 'ai_tutor'
+        }
+      ]);
+      
+      setQuestion('');
+      toast.success('Question answered successfully!');
+    } catch (error) {
+      console.error('Question error:', error);
+      toast.error('Failed to get answer');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Ask AI Tutor</h1>
+        <p className="text-gray-600">Get answers from course materials or general AI tutoring</p>
+      </div>
+
+      {/* Available Materials Info */}
+      {availableMaterials.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <h3 className="font-medium text-blue-900 mb-2">📚 Available Study Materials ({availableMaterials.length})</h3>
+          <div className="space-y-1">
+            {availableMaterials.slice(0, 4).map((material, idx) => (
+              <p key={material.id || idx} className="text-blue-700 text-sm">
+                📄 {material.original_filename || material.filename} 
+                {material.subject && ` (${material.subject})`}
+                {material.student_id ? ' 👤 Your PDF' : ' 🎓 Course Material'}
+              </p>
+            ))}
+            {availableMaterials.length > 4 && (
+              <p className="text-blue-700 text-sm">+ {availableMaterials.length - 4} more materials available</p>
+            )}
+          </div>
+          <div className="mt-2 text-xs text-blue-600">
+            💡 The AI can search through all these materials to answer your questions!
+          </div>
+        </div>
+      )}
+      
+      {/* Conversation History */}
+      {conversation.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold text-gray-900">Conversation</h2>
+          <div className="space-y-4">
+            {conversation.map((msg, idx) => (
+              <div key={idx} className={`p-4 rounded-xl ${
+                msg.type === 'question' 
+                  ? 'bg-emerald-50 border-l-4 border-emerald-500' 
+                  : 'bg-blue-50 border-l-4 border-blue-500'
+              }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-medium text-sm text-gray-600">
+                      {msg.type === 'question' ? 'Your Question:' : 'AI Answer:'}
+                    </span>
+                    {msg.type === 'question' && (
+                      <span className={`text-xs px-2 py-1 rounded-full ${
+                        msg.queryType === 'rag' 
+                          ? 'bg-purple-100 text-purple-800' 
+                          : 'bg-green-100 text-green-800'
+                      }`}>
+                        {msg.queryType === 'rag' ? 'Course Materials' : 'AI Tutor'}
+                      </span>
+                    )}
+                    {msg.type === 'answer' && msg.source && (
+                      <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-800">
+                        {msg.source === 'course_materials' ? '📄 Course Materials' : '🤖 AI Tutor'}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-xs text-gray-500">
+                    {msg.timestamp.toLocaleTimeString()}
+                  </span>
+                </div>
+                <p className="text-gray-800 whitespace-pre-wrap">{msg.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Question Input */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Query Type</label>
+            <select
+              value={queryType}
+              onChange={(e) => setQueryType(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="rag">Course Materials</option>
+              <option value="general">General AI Tutor</option>
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+            <select
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Accountancy">Accountancy</option>
+              <option value="Arts">Arts</option>
+              <option value="Bangla">Bangla</option>
+              <option value="Biology">Biology</option>
+              <option value="Business Studies">Business Studies</option>
+              <option value="C++">C++</option>
+              <option value="Chemistry">Chemistry</option>
+              <option value="Civics">Civics</option>
+              <option value="English">English</option>
+              <option value="History">History</option>
+              <option value="Indian Economics">Indian Economics</option>
+              <option value="Information Practices">Information Practices</option>
+              <option value="Macro Economics">Macro Economics</option>
+              <option value="Mathematics">Mathematics</option>
+              <option value="Micro Economics">Micro Economics</option>
+              <option value="Notes">Notes</option>
+              <option value="Physics">Physics</option>
+              <option value="Political Science">Political Science</option>
+              <option value="Psychology">Psychology</option>
+              <option value="Sanskrit">Sanskrit</option>
+              <option value="Science">Science</option>
+              <option value="Social Studies">Social Studies</option>
+              <option value="Sociology">Sociology</option>
+
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
+            <select
+              value={gradeLevel}
+              onChange={(e) => setGradeLevel(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Grade 6">Grade 6</option>
+              <option value="Grade 7">Grade 7</option>
+              <option value="Grade 8">Grade 8</option>
+              <option value="Grade 9">Grade 9</option>
+              <option value="Grade 10">Grade 10</option>
+              <option value="Grade 11">Grade 11</option>
+              <option value="Grade 12">Grade 12</option>
+              <option value="University Level">University Level</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Your Question</label>
+          <textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder={queryType === 'rag' 
+              ? "Ask a question about your course materials..." 
+              : "Ask any academic question..."}
+            className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 min-h-[100px]"
+          />
+        </div>
+
+        <button
+          onClick={askQuestion}
+          disabled={loading || !question.trim()}
+          className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {loading ? 'Getting Answer...' : (queryType === 'rag' ? 'Ask Course Materials' : 'Ask AI Tutor')}
+        </button>
+      </div>
+
+      
+    </div>
+  );
+};
+
+// Subscription Management Component
+const SubscriptionManagement = () => {
+  const [subscription, setSubscription] = useState(null);
+  const [plans, setPlans] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [processingPlanId, setProcessingPlanId] = useState(null);
+
+  const fetchSubscriptionData = async () => {
+    try {
+      const [subResponse, plansResponse] = await Promise.all([
+        axios.get('/my-subscription'),
+        axios.get('/subscription-plans')
+      ]);
+      setSubscription(subResponse.data);
+      setPlans(plansResponse.data.plans || []);
+    } catch (error) {
+      toast.error('Failed to load subscription data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const reconcilePaymentFromRedirect = async () => {
+    const params = new URLSearchParams(window.location.search);
+    const transactionId = params.get('transaction_id') || localStorage.getItem('pending_subscription_tx');
+    const isPaymentReturn = params.get('payment_return') === '1' || params.get('payment');
+
+    if (!isPaymentReturn || !transactionId) return;
+
+    try {
+      const response = await axios.post(`/payments/phonepe/confirm/${transactionId}`);
+      if (response.data?.success) {
+        toast.success('Subscription payment confirmed successfully');
+      } else {
+        toast.error(`Payment status: ${response.data?.payment_status || 'PENDING'}`);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to confirm payment');
+    } finally {
+      localStorage.removeItem('pending_subscription_tx');
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  };
+
+  useEffect(() => {
+    const init = async () => {
+      await reconcilePaymentFromRedirect();
+      await fetchSubscriptionData();
+    };
+    init();
+  }, []);
+
+  const subscribeToPlan = async (planId) => {
+    setProcessingPlanId(planId);
+    try {
+      const response = await axios.post('/create-subscription', { plan_id: planId });
+      if (response.data?.success && response.data?.redirect_url) {
+        localStorage.setItem('pending_subscription_tx', response.data.transaction_id);
+        window.location.href = response.data.redirect_url;
+        return;
+      }
+      toast.error('Unable to start PhonePe payment flow');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to create subscription');
+    } finally {
+      setProcessingPlanId(null);
+    }
+  };
+
+  if (loading) return <div className="p-6">Loading subscription data...</div>;
+
+  const access = subscription?.access_status;
+  const currentSub = subscription?.subscription;
+  const previousSub = subscription?.previous_subscription || access?.previous_subscription;
+  const lifecycleStatus = access?.lifecycle_status || subscription?.lifecycle_status;
+  const hasActivePaidSubscription = ['MONTHLY_SUBSCRIPTION', 'YEARLY_SUBSCRIPTION'].includes(lifecycleStatus);
+  const canShowPlans = !hasActivePaidSubscription && !access?.is_blocked;
+
+  const lifecycleLabelMap = {
+    FREE_TIER: 'Free Tier',
+    FREE_TRIAL_ACTIVE: 'Free Trial Active',
+    FREE_TRIAL_ENDED: 'Free Trial Ended',
+    MONTHLY_SUBSCRIPTION: 'Monthly Subscription',
+    YEARLY_SUBSCRIPTION: 'Yearly Subscription',
+    BLOCKED: 'Blocked',
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Subscription Management</h1>
+        <p className="text-gray-600">7-day free trial, then continue with Monthly (Rs 199) or Yearly (Rs 1799)</p>
+      </div>
+
+      <div className={`rounded-xl p-6 border ${
+        access?.status === 'ACTIVE_SUBSCRIPTION'
+          ? 'bg-green-50 border-green-200'
+          : access?.status === 'TRIAL_ACTIVE'
+          ? 'bg-blue-50 border-blue-200'
+          : access?.status === 'BLOCKED'
+          ? 'bg-red-50 border-red-200'
+          : 'bg-yellow-50 border-yellow-200'
+      }`}>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">Current Access</h3>
+        <p className="text-sm text-gray-800 mb-1"><span className="font-medium">Access Status:</span> {access?.status?.replaceAll('_', ' ') || 'UNKNOWN'}</p>
+        <p className="text-sm text-gray-800 mb-1"><span className="font-medium">Lifecycle:</span> {lifecycleLabelMap[lifecycleStatus] || lifecycleStatus || 'UNKNOWN'}</p>
+        <p className="text-sm text-gray-700 mb-1">{access?.message}</p>
+        {access?.trial_end_at && (
+          <p className="text-sm text-gray-700">
+            <span className="font-medium">Trial Ends:</span> {new Date(access.trial_end_at).toLocaleDateString()}
+          </p>
+        )}
+        {(access?.next_billing_date || currentSub?.end_date) && (
+          <p className="text-sm text-gray-700">
+            <span className="font-medium">Next Billing Due:</span> {new Date(access?.next_billing_date || currentSub?.end_date).toLocaleDateString()}
+          </p>
+        )}
+      </div>
+
+      {currentSub && (
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Current Plan Details</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <p><span className="font-medium">Plan:</span> {currentSub.plan_name || 'N/A'}</p>
+            <p><span className="font-medium">Billing Cycle:</span> {currentSub.billing_cycle || 'N/A'}</p>
+            <p><span className="font-medium">Amount:</span> Rs {((currentSub.amount || 0) / 100).toFixed(0)}</p>
+            <p><span className="font-medium">Subscription Status:</span> {currentSub.status}</p>
+            <p><span className="font-medium">Start Date:</span> {currentSub.start_date ? new Date(currentSub.start_date).toLocaleDateString() : 'N/A'}</p>
+            <p><span className="font-medium">End Date:</span> {currentSub.end_date ? new Date(currentSub.end_date).toLocaleDateString() : 'N/A'}</p>
+          </div>
+        </div>
+      )}
+
+      {previousSub && (
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Previous Subscription</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <p><span className="font-medium">Plan:</span> {previousSub.plan_name || 'N/A'}</p>
+            <p><span className="font-medium">Billing Cycle:</span> {previousSub.billing_cycle || 'N/A'}</p>
+            <p><span className="font-medium">Amount:</span> {previousSub.amount ? `Rs ${((previousSub.amount || 0) / 100).toFixed(0)}` : 'N/A'}</p>
+            <p><span className="font-medium">Ended On:</span> {previousSub.end_date ? new Date(previousSub.end_date).toLocaleDateString() : 'N/A'}</p>
+          </div>
+        </div>
+      )}
+
+      {canShowPlans ? (
+      <div>
+        <h2 className="text-2xl font-semibold text-gray-900 mb-4">Available Plans</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {plans.map((plan) => (
+            <div key={plan.id} className="bg-white rounded-xl p-6 shadow-sm border hover:shadow-lg transition-shadow">
+              <div className="text-center mb-6">
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.name}</h3>
+                <div className="text-3xl font-bold text-emerald-600 mb-2">{plan.price_display}</div>
+                <p className="text-gray-600">{plan.description}</p>
+              </div>
+
+              <div className="space-y-3 mb-6">
+                {plan.features.map((feature, idx) => (
+                  <div key={idx} className="flex items-center space-x-3">
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                    <span className="text-gray-700">{feature}</span>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={() => subscribeToPlan(plan.id)}
+                disabled={processingPlanId === plan.id}
+                className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                {processingPlanId === plan.id ? 'Redirecting to PhonePe...' : 'Pay with PhonePe'}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+      ) : (
+        <div className="bg-white rounded-xl p-6 border">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Plan Actions</h2>
+          <p className="text-sm text-gray-700">
+            {hasActivePaidSubscription
+              ? 'You already have an active paid subscription. New plans are hidden to prevent duplicate subscriptions.'
+              : 'Plans are not available for this account right now.'}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Personalized Learning Component
+const PersonalizedLearning = () => {
+  const [learningPath, setLearningPath] = useState(null);
+  const [insights, setInsights] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchLearningData();
+  }, []);
+
+  const fetchLearningData = async () => {
+    try {
+      const [pathResponse, insightsResponse] = await Promise.all([
+        axios.get('/learning-path'),
+        axios.get('/learning-insights')
+      ]);
+      
+      setLearningPath(pathResponse.data);
+      setInsights(insightsResponse.data.insights || []);
+    } catch (error) {
+      toast.error('Failed to load learning path');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const markTopicComplete = async (topic) => {
+    try {
+      await axios.post('/update-learning-progress', null, {
+        params: { completed_topic: topic }
+      });
+      
+      toast.success('Progress updated!');
+      fetchLearningData(); // Refresh data
+    } catch (error) {
+      toast.error('Failed to update progress');
+    }
+  };
+
+  if (loading) return <div className="p-6">Loading personalized learning path...</div>;
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Personalized Learning Path</h1>
+        <p className="text-gray-600">AI-powered recommendations based on your performance</p>
+      </div>
+
+      {/* Current Level */}
+      {learningPath && (
+        <div className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl p-6 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xl font-semibold mb-2">Current Level</h3>
+              <p className="text-2xl font-bold capitalize">{learningPath.current_level}</p>
+            </div>
+            <Brain className="w-12 h-12 opacity-80" />
+          </div>
+        </div>
+      )}
+
+      {/* Learning Insights */}
+      {insights.length > 0 && (
+        <div>
+          <h2 className="text-2xl font-semibold text-gray-900 mb-4">AI Insights</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {insights.map((insight, idx) => (
+              <div key={idx} className={`p-4 rounded-xl border-l-4 ${
+                insight.priority === 'high' ? 'bg-red-50 border-red-500' :
+                insight.priority === 'medium' ? 'bg-yellow-50 border-yellow-500' :
+                'bg-blue-50 border-blue-500'
+              }`}>
+                <h4 className="font-semibold text-gray-900 mb-2">{insight.title}</h4>
+                <p className="text-gray-700 text-sm">{insight.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recommended Topics */}
+      {learningPath && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Recommended Topics</h3>
+            <div className="space-y-3">
+              {learningPath.recommended_topics.map((topic, idx) => (
+                <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <span className="font-medium text-gray-900">{topic}</span>
+                  <button
+                    onClick={() => markTopicComplete(topic)}
+                    className="px-3 py-1 bg-emerald-500 text-white rounded text-sm hover:bg-emerald-600"
+                  >
+                    Mark Complete
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            {/* Strong Areas */}
+            <div className="bg-white rounded-xl p-6 shadow-sm border">
+              <h3 className="text-lg font-semibold text-green-900 mb-4">Strong Areas</h3>
+              <div className="space-y-2">
+                {learningPath.strong_areas.map((area, idx) => (
+                  <div key={idx} className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span className="text-gray-700">{area}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Areas for Improvement */}
+            <div className="bg-white rounded-xl p-6 shadow-sm border">
+              <h3 className="text-lg font-semibold text-orange-900 mb-4">Areas for Improvement</h3>
+              <div className="space-y-2">
+                {learningPath.weak_areas.map((area, idx) => (
+                  <div key={idx} className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                    <span className="text-gray-700">{area}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Create Content Component (for teachers)
+
+
+const CreateContent = () => {
+  const [mode, setMode] = useState('list'); // Modes: 'list', 'create', 'view', 'edit'
+  const [contents, setContents] = useState([]);
+  const [selectedContent, setSelectedContent] = useState(null);
+  const [formData, setFormData] = useState({
+    title: '',
+    subject: 'Mathematics',
+    grade_level: 'Grade 8',
+    topic: '',
+    tags: [],
+    content: '' // For edit mode
+  });
+  const [loading, setLoading] = useState(false);
+  const [fetchLoading, setFetchLoading] = useState(false);
+
+  // Fetch teacher's contents on mount and after actions
+  useEffect(() => {
+    fetchContents();
+  }, []);
+
+  const fetchContents = async () => {
+    setFetchLoading(true);
+    try {
+      const response = await axios.get('/teacher/my-contents');
+      setContents(response.data);
+    } catch (error) {
+      toast.error('Failed to fetch contents');
+    } finally {
+      setFetchLoading(false);
+    }
+  };
+
+  const handleCreateSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await axios.post('/study/generate', formData);
+      toast.success('Content generated successfully!');
+      resetForm();
+      setMode('list');
+      fetchContents();
+    } catch (error) {
+      toast.error('Failed to generate content');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await axios.put(`/teacher/update-content/${selectedContent._id}`, formData);
+      toast.success('Content updated successfully!');
+      resetForm();
+      setMode('list');
+      fetchContents();
+    } catch (error) {
+      toast.error('Failed to update content');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (contentId) => {
+    if (window.confirm('Are you sure you want to delete this content?')) {
+      try {
+        await axios.delete(`/teacher/delete-content/${contentId}`);
+        toast.success('Content deleted successfully!');
+        fetchContents();
+      } catch (error) {
+        toast.error('Failed to delete content');
+      }
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      subject: 'Mathematics',
+      grade_level: 'Grade 8',
+      topic: '',
+      tags: [],
+      content: ''
+    });
+  };
+
+  const handleView = (content) => {
+    setSelectedContent(content);
+    setMode('view');
+  };
+
+  const handleEdit = (content) => {
+    setSelectedContent(content);
+    setFormData({
+      title: content.title,
+      subject: content.subject,
+      grade_level: content.grade_level,
+      topic: '', // Topic might not be stored, or use content as topic
+      tags: content.tags || [],
+      content: content.content
+    });
+    setMode('edit');
+  };
+
+  const renderList = () => (
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">My Study Contents</h1>
+        <button
+          onClick={() => setMode('create')}
+          className="bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600"
+        >
+          Create New Content
+        </button>
+      </div>
+      {fetchLoading ? (
+        <p>Loading...</p>
+      ) : contents.length === 0 ? (
+        <p>No contents found. Create your first content!</p>
+      ) : (
+        <div className="space-y-4">
+          {contents.map((content) => (
+            <div key={content._id} className="bg-white rounded-xl p-4 shadow-sm border">
+              <h2 className="text-xl font-semibold">{content.title}</h2>
+              <p>Subject: {content.subject} | Grade: {content.grade_level}</p>
+              <p>Tags: {content.tags?.join(', ') || 'None'}</p>
+              <div className="mt-4 flex space-x-2">
+                <button
+                  onClick={() => handleView(content)}
+                  className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                >
+                  View
+                </button>
+                {/* <button
+                  onClick={() => handleEdit(content)}
+                  className="bg-yellow-500 text-white px-3 py-1 rounded hover:bg-yellow-600"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={() => handleDelete(content._id)}
+                  className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                >
+                  Delete
+                </button> */}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderCreateForm = () => (
+    <div className="p-6 max-w-2xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">Create Study Content</h1>
+        <button
+          onClick={() => setMode('list')}
+          className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600"
+        >
+          Back to List
+        </button>
+      </div>
+      <form onSubmit={handleCreateSubmit} className="bg-white rounded-xl p-6 shadow-sm border space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Content Title</label>
+          <input
+            type="text"
+            value={formData.title}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            required
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+            <select
+              value={formData.subject}
+              onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Accountancy">Accountancy</option>
+              <option value="Arts">Arts</option>
+              <option value="Bangla">Bangla</option>
+              <option value="Biology">Biology</option>
+              <option value="Business Studies">Business Studies</option>
+              <option value="C++">C++</option>
+              <option value="Chemistry">Chemistry</option>
+              <option value="Civics">Civics</option>
+              <option value="English">English</option>
+              <option value="History">History</option>
+              <option value="Indian Economics">Indian Economics</option>
+              <option value="Information Practices">Information Practices</option>
+              <option value="Macro Economics">Macro Economics</option>
+              <option value="Mathematics">Mathematics</option>
+              <option value="Micro Economics">Micro Economics</option>
+              <option value="Notes">Notes</option>
+              <option value="Physics">Physics</option>
+              <option value="Political Science">Political Science</option>
+              <option value="Psychology">Psychology</option>
+              <option value="Sanskrit">Sanskrit</option>
+              <option value="Science">Science</option>
+              <option value="Social Studies">Social Studies</option>
+              <option value="Sociology">Sociology</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
+            <select
+              value={formData.grade_level}
+              onChange={(e) => setFormData({ ...formData, grade_level: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Grade 6">Grade 6</option>
+              <option value="Grade 7">Grade 7</option>
+              <option value="Grade 8">Grade 8</option>
+              <option value="Grade 9">Grade 9</option>
+              <option value="Grade 10">Grade 10</option>
+              <option value="Grade 11">Grade 11</option>
+              <option value="Grade 12">Grade 12</option>
+              <option value="University Level">University Level</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Topic Description</label>
+          <textarea
+            value={formData.topic}
+            onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
+            placeholder="Describe the topic you want to generate content for..."
+            className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 min-h-[100px]"
+            required
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+        >
+          {loading ? 'Generating Content...' : 'Generate AI Content'}
+        </button>
+      </form>
+    </div>
+  );
+
+  const renderView = () => (
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">View Study Content</h1>
+        <button
+          onClick={() => setMode('list')}
+          className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600"
+        >
+          Back to List
+        </button>
+      </div>
+      {selectedContent && (
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h2 className="text-2xl font-semibold mb-4">{selectedContent.title}</h2>
+          <p><strong>Subject:</strong> {selectedContent.subject}</p>
+          <p><strong>Grade Level:</strong> {selectedContent.grade_level}</p>
+          <p><strong>Tags:</strong> {selectedContent.tags?.join(', ') || 'None'}</p>
+          <div className="mt-4">
+            <strong>Content:</strong>
+            <div className="mt-2 p-4 bg-gray-50 rounded-lg whitespace-pre-wrap">{selectedContent.content}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderEditForm = () => (
+    <div className="p-6 max-w-2xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">Edit Study Content</h1>
+        <button
+          onClick={() => setMode('list')}
+          className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600"
+        >
+          Back to List
+        </button>
+      </div>
+      <form onSubmit={handleEditSubmit} className="bg-white rounded-xl p-6 shadow-sm border space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Content Title</label>
+          <input
+            type="text"
+            value={formData.title}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            required
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+            <select
+              value={formData.subject}
+              onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Accountancy">Accountancy</option>
+              <option value="Arts">Arts</option>
+              <option value="Bangla">Bangla</option>
+              <option value="Biology">Biology</option>
+              <option value="Business Studies">Business Studies</option>
+              <option value="C++">C++</option>
+              <option value="Chemistry">Chemistry</option>
+              <option value="Civics">Civics</option>
+              <option value="English">English</option>
+              <option value="History">History</option>
+              <option value="Indian Economics">Indian Economics</option>
+              <option value="Information Practices">Information Practices</option>
+              <option value="Macro Economics">Macro Economics</option>
+              <option value="Mathematics">Mathematics</option>
+              <option value="Micro Economics">Micro Economics</option>
+              <option value="Notes">Notes</option>
+              <option value="Physics">Physics</option>
+              <option value="Political Science">Political Science</option>
+              <option value="Psychology">Psychology</option>
+              <option value="Sanskrit">Sanskrit</option>
+              <option value="Science">Science</option>
+              <option value="Social Studies">Social Studies</option>
+              <option value="Sociology">Sociology</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
+            <select
+              value={formData.grade_level}
+              onChange={(e) => setFormData({ ...formData, grade_level: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Grade 6">Grade 6</option>
+              <option value="Grade 7">Grade 7</option>
+              <option value="Grade 8">Grade 8</option>
+              <option value="Grade 9">Grade 9</option>
+              <option value="Grade 10">Grade 10</option>
+              <option value="Grade 11">Grade 11</option>
+              <option value="Grade 12">Grade 12</option>
+              <option value="University Level">University Level</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Content</label>
+          <textarea
+            value={formData.content}
+            onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+            placeholder="Edit the content..."
+            className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 min-h-[200px]"
+            required
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+        >
+          {loading ? 'Updating...' : 'Update Content'}
+        </button>
+      </form>
+    </div>
+  );
+
+  return (
+    <div>
+      {mode === 'list' && renderList()}
+      {mode === 'create' && renderCreateForm()}
+      {mode === 'view' && renderView()}
+      {mode === 'edit' && renderEditForm()}
+    </div>
+  );
+};
+
+
+// Create Quiz Component (for teachers)
+
+const CreateQuiz = () => {
+  const [mode, setMode] = useState('list'); // Modes: 'list', 'create', 'view'
+  const [quizzes, setQuizzes] = useState([]);
+  const [selectedQuiz, setSelectedQuiz] = useState(null);
+  const [userAnswers, setUserAnswers] = useState({}); // For interactive viewing
+  const [formData, setFormData] = useState({
+    title: '',
+    subject: 'Mathematics',
+    grade_level: 'Grade 8',
+    topic: '',
+    num_questions: 10,
+    difficulty: 'medium'
+  });
+  const [loading, setLoading] = useState(false);
+  const [fetchLoading, setFetchLoading] = useState(false);
+
+  // Fetch teacher's quizzes on mount and after actions
+  useEffect(() => {
+    fetchQuizzes();
+  }, []);
+
+  const fetchQuizzes = async () => {
+    setFetchLoading(true);
+    try {
+      const response = await axios.get('/quiz/list');
+      setQuizzes(response.data);
+    } catch (error) {
+      toast.error('Failed to fetch quizzes');
+    } finally {
+      setFetchLoading(false);
+    }
+  };
+
+  const handleCreateSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await axios.post('/quiz/generate', formData);
+      toast.success('Quiz generated successfully!');
+      resetForm();
+      setMode('list');
+      fetchQuizzes();
+    } catch (error) {
+      toast.error('Failed to generate quiz');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      subject: 'Mathematics',
+      grade_level: 'Grade 8',
+      topic: '',
+      num_questions: 10,
+      difficulty: 'medium'
+    });
+  };
+
+  const handleView = (quiz) => {
+    setSelectedQuiz(quiz);
+    setUserAnswers({}); // Reset answers for new view
+    setMode('view');
+  };
+
+  const handleAnswerSelect = (questionIndex, optionIndex) => {
+    setUserAnswers({ ...userAnswers, [questionIndex]: optionIndex });
+  };
+
+  const renderList = () => (
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">My Quizzes</h1>
+        <button
+          onClick={() => setMode('create')}
+          className="bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600"
+        >
+          Create New Quiz
+        </button>
+      </div>
+      {fetchLoading ? (
+        <p>Loading...</p>
+      ) : quizzes.length === 0 ? (
+        <p>No quizzes found. Create your first quiz!</p>
+      ) : (
+        <div className="space-y-4">
+          {quizzes.map((quiz) => (
+            <div key={quiz.id} className="bg-white rounded-xl p-4 shadow-sm border">
+              <h2 className="text-xl font-semibold">{quiz.title}</h2>
+              <p>Subject: {quiz.subject} | Grade: {quiz.grade_level} | Questions: {quiz.questions.length} | Total Marks: {quiz.total_marks}</p>
+              <div className="mt-4">
+                <button
+                  onClick={() => handleView(quiz)}
+                  className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                >
+                  View Quiz
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderCreateForm = () => (
+    <div className="p-6 max-w-2xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">Create Quiz</h1>
+        <button
+          onClick={() => setMode('list')}
+          className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600"
+        >
+          Back to List
+        </button>
+      </div>
+      <form onSubmit={handleCreateSubmit} className="bg-white rounded-xl p-6 shadow-sm border space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Quiz Title</label>
+          <input
+            type="text"
+            value={formData.title}
+            onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            required
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+            <select
+              value={formData.subject}
+              onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Accountancy">Accountancy</option>
+              <option value="Arts">Arts</option>
+              <option value="Bangla">Bangla</option>
+              <option value="Biology">Biology</option>
+              <option value="Business Studies">Business Studies</option>
+              <option value="C++">C++</option>
+              <option value="Chemistry">Chemistry</option>
+              <option value="Civics">Civics</option>
+              <option value="English">English</option>
+              <option value="History">History</option>
+              <option value="Indian Economics">Indian Economics</option>
+              <option value="Information Practices">Information Practices</option>
+              <option value="Macro Economics">Macro Economics</option>
+              <option value="Mathematics">Mathematics</option>
+              <option value="Micro Economics">Micro Economics</option>
+              <option value="Notes">Notes</option>
+              <option value="Physics">Physics</option>
+              <option value="Political Science">Political Science</option>
+              <option value="Psychology">Psychology</option>
+              <option value="Sanskrit">Sanskrit</option>
+              <option value="Science">Science</option>
+              <option value="Social Studies">Social Studies</option>
+              <option value="Sociology">Sociology</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
+            <select
+              value={formData.grade_level}
+              onChange={(e) => setFormData({ ...formData, grade_level: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Grade 6">Grade 6</option>
+              <option value="Grade 7">Grade 7</option>
+              <option value="Grade 8">Grade 8</option>
+              <option value="Grade 9">Grade 9</option>
+              <option value="Grade 10">Grade 10</option>
+              <option value="Grade 11">Grade 11</option>
+              <option value="Grade 12">Grade 12</option>
+              <option value="University Level">University Level</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Quiz Topic</label>
+          <textarea
+            value={formData.topic}
+            onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
+            placeholder="Describe the topic for quiz questions..."
+            className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 min-h-[100px]"
+            required
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Number of Questions</label>
+            <select
+              value={formData.num_questions}
+              onChange={(e) => setFormData({ ...formData, num_questions: parseInt(e.target.value) })}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value={5}>5 Questions</option>
+              <option value={10}>10 Questions</option>
+              <option value={15}>15 Questions</option>
+              <option value={20}>20 Questions</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Difficulty</label>
+            <select
+              value={formData.difficulty}
+              onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="easy">Easy</option>
+              <option value="medium">Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
+        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+        >
+          {loading ? 'Generating Quiz...' : 'Generate AI Quiz'}
+        </button>
+      </form>
+    </div>
+  );
+
+  const renderView = () => (
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">View Quiz: {selectedQuiz?.title}</h1>
+        <button
+          onClick={() => setMode('list')}
+          className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600"
+        >
+          Back to List
+        </button>
+      </div>
+      {selectedQuiz && (
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <p><strong>Subject:</strong> {selectedQuiz.subject}</p>
+          <p><strong>Grade Level:</strong> {selectedQuiz.grade_level}</p>
+          <p><strong>Total Marks:</strong> {selectedQuiz.total_marks}</p>
+          <div className="mt-6">
+            <h3 className="text-lg font-semibold mb-4">Questions (Interactive Review)</h3>
+            {selectedQuiz.questions.map((question, index) => (
+              <div key={index} className="mb-6 p-4 border rounded-lg">
+                <p className="font-medium mb-2">{index + 1}. {question.question}</p>
+                <div className="space-y-2">
+                  {question.options.map((option, optIndex) => {
+                    const isSelected = userAnswers[index] === optIndex;
+                    const isCorrect = optIndex === question.correct_answer;
+                    let className = 'p-2 border rounded cursor-pointer';
+                    if (isSelected) {
+                      className += isCorrect ? ' bg-green-200 border-green-500' : ' bg-red-200 border-red-500';
+                    } else if (isCorrect && userAnswers[index] !== undefined) {
+                      className += ' bg-green-100 border-green-300';
+                    }
+                    return (
+                      <div
+                        key={optIndex}
+                        className={className}
+                        onClick={() => handleAnswerSelect(index, optIndex)}
+                      >
+                        {String.fromCharCode(65 + optIndex)}. {option}
+                        {isCorrect && userAnswers[index] !== undefined && ' (Correct)'}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div>
+      {mode === 'list' && renderList()}
+      {mode === 'create' && renderCreateForm()}
+      {mode === 'view' && renderView()}
+    </div>
+  );
+};
+
+
+// Students Management Component (for teachers)
+const StudentsManagement = () => {
+  return (
+    <div className="p-6">
+      <h1 className="text-3xl font-bold text-gray-900 mb-6">Students Management</h1>
+      <div className="bg-white rounded-xl p-8 shadow-sm border text-center">
+        <Users className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+        <p className="text-gray-500 text-lg">Student management features</p>
+        <p className="text-gray-400">Coming soon in next update</p>
+      </div>
+    </div>
+  );
+};
+
+// File Upload Component (for teachers)
+const FileUpload = () => {
+  const [materials, setMaterials] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadForm, setUploadForm] = useState({
+    subject: 'Mathematics',
+    grade_level: 'Grade 8',
+    description: ''
+  });
+
+  useEffect(() => {
+    fetchMaterials();
+  }, []);
+
+  const fetchMaterials = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get('/teacher/my-materials');
+      setMaterials(response.data.materials || []);
+    } catch (error) {
+      toast.error('Failed to load materials');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      toast.error('Please upload only PDF files');
+      return;
+    }
+  const fileSizeMB = file.size / (1024 * 1024);
+  if (fileSizeMB > 5) {
+    toast.error('File size must be less than 5 MB');
+    return;
+  }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('subject', uploadForm.subject);
+      formData.append('grade_level', uploadForm.grade_level);
+      formData.append('description', uploadForm.description || `Study material: ${file.name}`);
+
+      const config = {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          ...axios.defaults.headers.common
+        },
+        maxContentLength: 10 * 1024 * 1024, // 10 MB
+        maxBodyLength: 10 * 1024 * 1024,
+
+      };
+      
+      const response = await axios.post('/teacher/upload-material', formData, config);
+
+      toast.success(`File uploaded and processed! ${response.data.pages_processed} pages extracted.`);
+      fetchMaterials();
+      setUploadForm({ subject: 'Mathematics', grade_level: 'Grade 8', description: '' });
+      event.target.value = ''; // Reset file input
+    } catch (error) {
+      toast.error('Failed to upload file');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Upload Study Materials</h1>
+        <p className="text-gray-600">Upload PDF course materials for AI-powered Q&A system</p>
+      </div>
+
+      {/* Upload Form */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload New Material</h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+            <select
+              value={uploadForm.subject}
+              onChange={(e) => setUploadForm({...uploadForm, subject: e.target.value})}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Accountancy">Accountancy</option>
+              <option value="Arts">Arts</option>
+              <option value="Bangla">Bangla</option>
+              <option value="Biology">Biology</option>
+              <option value="Business Studies">Business Studies</option>
+              <option value="C++">C++</option>
+              <option value="Chemistry">Chemistry</option>
+              <option value="Civics">Civics</option>
+              <option value="English">English</option>
+              <option value="History">History</option>
+              <option value="Indian Economics">Indian Economics</option>
+              <option value="Information Practices">Information Practices</option>
+              <option value="Macro Economics">Macro Economics</option>
+              <option value="Mathematics">Mathematics</option>
+              <option value="Micro Economics">Micro Economics</option>
+              <option value="Notes">Notes</option>
+              <option value="Physics">Physics</option>
+              <option value="Political Science">Political Science</option>
+              <option value="Psychology">Psychology</option>
+              <option value="Sanskrit">Sanskrit</option>
+              <option value="Science">Science</option>
+              <option value="Social Studies">Social Studies</option>
+              <option value="Sociology">Sociology</option>
+
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Grade Level</label>
+            <select
+              value={uploadForm.grade_level}
+              onChange={(e) => setUploadForm({...uploadForm, grade_level: e.target.value})}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="Grade 6">Grade 6</option>
+              <option value="Grade 7">Grade 7</option>
+              <option value="Grade 8">Grade 8</option>
+              <option value="Grade 9">Grade 9</option>
+              <option value="Grade 10">Grade 10</option>
+              <option value="Grade 11">Grade 11</option>
+              <option value="Grade 12">Grade 12</option>
+              <option value="University Level">University Level</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Description (Optional)</label>
+          <input
+            type="text"
+            value={uploadForm.description}
+            onChange={(e) => setUploadForm({...uploadForm, description: e.target.value})}
+            placeholder="Brief description of the material..."
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Upload PDF File</label>
+          <input
+            type="file"
+            accept=".pdf"
+            onChange={handleFileUpload}
+            disabled={uploading}
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+          />
+        </div>
+
+        {uploading && (
+          <div className="text-center text-emerald-600">
+            <p>Processing file and creating embeddings...</p>
+          </div>
+        )}
+      </div>
+
+      {/* Uploaded Materials */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">My Uploaded Materials</h3>
+        
+        {loading ? (
+          <p className="text-gray-500">Loading materials...</p>
+        ) : materials.length > 0 ? (
+          <div className="grid gap-4">
+            {materials.map((material) => (
+              <div key={material.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium text-gray-900">{material.original_filename}</h4>
+                    <p className="text-gray-600 text-sm">{material.subject} • {material.grade_level}</p>
+                    <p className="text-gray-500 text-sm">{material.description}</p>
+                  </div>
+                  <div className="text-right">
+                    <div className={`px-2 py-1 rounded-full text-xs ${
+                      material.is_processed 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {material.is_processed ? '✅ Processed' : '⏳ Processing'}
+                    </div>
+                    <p className="text-gray-500 text-xs mt-1">
+                      {(material.file_size / 1024).toFixed(1)} KB
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-gray-500">No materials uploaded yet</p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Notes Component (for students)
+const NotesManager = () => {
+  const [notes, setNotes] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newNote, setNewNote] = useState({
+    title: '',
+    content: '',
+    subject: 'Mathematics',
+    tags: []
+  });
+  const [summarizing, setSummarizing] = useState(false);
+  const [summaryResult, setSummaryResult] = useState(null);
+
+  useEffect(() => {
+    fetchNotes();
+  }, []);
+
+  const fetchNotes = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get('/notes/my-notes');
+      setNotes(response.data.notes || []);
+    } catch (error) {
+      toast.error('Failed to load notes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createNote = async () => {
+    if (!newNote.title.trim() || !newNote.content.trim()) {
+      toast.error('Please provide both title and content');
+      return;
+    }
+
+    try {
+      const response = await axios.post('/notes/create', newNote, {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      toast.success('Note created successfully!');
+      setNewNote({ title: '', content: '', subject: 'Mathematics', tags: [] });
+      setShowCreateForm(false);
+      fetchNotes();
+    } catch (error) {
+      console.error('Note creation error:', error);
+      toast.error('Failed to create note');
+    }
+  };
+
+  const summarizeNote = async (noteContent, summaryType = 'brief') => {
+    setSummarizing(true);
+    try {
+      const response = await axios.post('/notes/summarize', {
+        note_content: noteContent,
+        summary_type: summaryType
+      });
+      
+      setSummaryResult({
+        ...response.data,
+        original_content: noteContent
+      });
+      
+      toast.success('Note summarized successfully!');
+    } catch (error) {
+      toast.error('Failed to summarize note');
+    } finally {
+      setSummarizing(false);
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Notes</h1>
+          <p className="text-gray-600">Create, manage, and summarize your study notes</p>
+        </div>
+        <button
+          onClick={() => setShowCreateForm(!showCreateForm)}
+          className="bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600 transition-colors"
+        >
+          {showCreateForm ? 'Cancel' : 'Create Note'}
+        </button>
+      </div>
+
+      {/* Create Note Form */}
+      {showCreateForm && (
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Create New Note</h3>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
+              <input
+                type="text"
+                value={newNote.title}
+                onChange={(e) => setNewNote({...newNote, title: e.target.value})}
+                placeholder="Note title..."
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+              <select
+                value={newNote.subject}
+                onChange={(e) => setNewNote({...newNote, subject: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+              >
+                <option value="Mathematics">Mathematics</option>
+                <option value="Science">Science</option>
+                <option value="English">English</option>
+                <option value="History">History</option>
+                <option value="Geography">Geography</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Content</label>
+              <textarea
+                value={newNote.content}
+                onChange={(e) => setNewNote({...newNote, content: e.target.value})}
+                placeholder="Write your notes here..."
+                className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 min-h-[200px]"
+              />
+            </div>
+
+            <div className="flex space-x-2">
+              <button
+                onClick={createNote}
+                className="bg-emerald-500 text-white px-6 py-2 rounded-lg hover:bg-emerald-600 transition-colors"
+              >
+                Save Note
+              </button>
+              <button
+                onClick={() => setShowCreateForm(false)}
+                className="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Summary Result */}
+      {summaryResult && (
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">AI Summary</h3>
+            <button
+              onClick={() => setSummaryResult(null)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              ✕
+            </button>
+          </div>
+          
+          <div className="bg-blue-50 p-4 rounded-lg mb-4">
+            <h4 className="font-medium text-blue-900 mb-2">Summary ({summaryResult.summary_type})</h4>
+            <p className="text-blue-800 whitespace-pre-wrap">{summaryResult.summary}</p>
+          </div>
+          
+          <div className="text-sm text-gray-600">
+            Original: {summaryResult.original_length} characters → Summary: {summaryResult.summary.length} characters
+            ({((summaryResult.summary.length / summaryResult.original_length) * 100).toFixed(1)}% of original)
+          </div>
+        </div>
+      )}
+
+      {/* Notes List */}
+      <div className="space-y-4">
+        {loading ? (
+          <p className="text-gray-500">Loading notes...</p>
+        ) : notes.length > 0 ? (
+          notes.map((note) => (
+            <div key={note.id} className="bg-white rounded-xl p-6 shadow-sm border">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">{note.title}</h3>
+                  <p className="text-gray-600 text-sm">{note.subject} • {new Date(note.created_at).toLocaleDateString()}</p>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => summarizeNote(note.content, 'brief')}
+                    disabled={summarizing}
+                    className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 disabled:opacity-50"
+                  >
+                    Brief Summary
+                  </button>
+                  <button
+                    onClick={() => summarizeNote(note.content, 'detailed')}
+                    disabled={summarizing}
+                    className="px-3 py-1 bg-purple-500 text-white text-sm rounded hover:bg-purple-600 disabled:opacity-50"
+                  >
+                    Detailed Summary
+                  </button>
+                </div>
+              </div>
+              
+              <div className="text-gray-700 whitespace-pre-wrap mb-3">
+                {note.content.length > 300 
+                  ? `${note.content.substring(0, 300)}...` 
+                  : note.content
+                }
+              </div>
+              
+              {note.tags && note.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {note.tags.map((tag, idx) => (
+                    <span key={idx} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-full">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-gray-500 text-lg">No notes yet</p>
+            <p className="text-gray-400">Create your first note to get started</p>
+          </div>
+        )}
+      </div>
+
+      {summarizing && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg">
+            <p className="text-gray-900">Summarizing note with AI...</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Student Profile Component
+const StudentProfile = () => {
+  const [profile, setProfile] = useState({
+    // Personal Info
+    name: '',
+    dob: '',
+    gender: '',
+    grade: '',
+    
+    // School Info
+    school_name: '',
+    school_address: '',
+    school_email: '',
+    
+    // Contact Info
+    parent_email: '',
+    whatsapp_no: '',
+    teacher_email: '',
+    principal_email: '',
+    teacher_phone: '',
+    principal_phone: '',
+    
+    // Additional Info
+    emergency_contact: '',
+    blood_group: '',
+    allergies: '',
+    hobbies: '',
+    subjects_of_interest: []
+  });
+  
+  const [loading, setLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [billing, setBilling] = useState(null);
+
+  useEffect(() => {
+    fetchProfile();
+  }, []);
+
+  const fetchProfile = async () => {
+    try {
+      const response = await axios.get('/student/profile');
+      setBilling(response.data.billing || null);
+      if (response.data.profile) {
+        setProfile(response.data.profile);
+      } else {
+        setIsEditing(true); // No profile exists, start in edit mode
+      }
+    } catch (error) {
+      console.error('Profile fetch error:', error);
+      setBilling(null);
+      setIsEditing(true); // Start in edit mode if no profile
+    }
+  };
+
+  const saveProfile = async () => {
+    setLoading(true);
+    try {
+      await axios.post('/student/profile', profile);
+      toast.success('Profile saved successfully!');
+      setIsEditing(false);
+    } catch (error) {
+      toast.error('Failed to save profile');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleInputChange = (field, value) => {
+    setProfile({...profile, [field]: value});
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Profile</h1>
+          <p className="text-gray-600">Manage your personal and academic information</p>
+        </div>
+        <div className="flex space-x-2">
+          {!isEditing ? (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600 transition-colors"
+            >
+              Edit Profile
+            </button>
+          ) : (
+            <div className="flex space-x-2">
+              <button
+                onClick={saveProfile}
+                disabled={loading}
+                className="bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+              >
+                {loading ? 'Saving...' : 'Save Profile'}
+              </button>
+              <button
+                onClick={() => {setIsEditing(false); fetchProfile();}}
+                className="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {billing && (
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Plan & Billing Details</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <p><span className="font-medium">Current Plan:</span> {billing.plan_name || 'Free Trial / No Active Plan'}</p>
+            <p><span className="font-medium">Subscription Status:</span> {(billing.subscription_status || 'UNKNOWN').replaceAll('_', ' ')}</p>
+            <p><span className="font-medium">Lifecycle Status:</span> {(billing.lifecycle_status || 'UNKNOWN').replaceAll('_', ' ')}</p>
+            <p><span className="font-medium">Billing Cycle:</span> {billing.billing_cycle || 'N/A'}</p>
+            <p><span className="font-medium">Plan Amount:</span> {billing.amount ? `Rs ${(billing.amount / 100).toFixed(0)}` : 'N/A'}</p>
+            <p><span className="font-medium">Next Billing Due:</span> {billing.next_billing_date ? new Date(billing.next_billing_date).toLocaleDateString() : 'N/A'}</p>
+            <p><span className="font-medium">Trial Ends:</span> {billing.trial_end_at ? new Date(billing.trial_end_at).toLocaleDateString() : 'N/A'}</p>
+            <p><span className="font-medium">Trial Days Remaining:</span> {billing.trial_days_remaining ?? 'N/A'}</p>
+            <p><span className="font-medium">Account Blocked:</span> {billing.is_blocked ? 'Yes' : 'No'}</p>
+            <p><span className="font-medium">Previous Plan:</span> {billing.previous_subscription?.plan_name || 'N/A'}</p>
+          </div>
+          {billing.message && (
+            <p className="mt-3 text-sm text-gray-700">{billing.message}</p>
+          )}
+        </div>
+      )}
+
+      {/* Profile Form */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Personal Information */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Personal Information</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Full Name *</label>
+              <input
+                type="text"
+                value={profile.name}
+                onChange={(e) => handleInputChange('name', e.target.value)}
+                disabled={!isEditing}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date of Birth *</label>
+                <input
+                  type="date"
+                  value={profile.dob}
+                  onChange={(e) => handleInputChange('dob', e.target.value)}
+                  disabled={!isEditing}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Gender *</label>
+                <select
+                  value={profile.gender}
+                  onChange={(e) => handleInputChange('gender', e.target.value)}
+                  disabled={!isEditing}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+                >
+                  <option value="">Select Gender</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Grade *</label>
+              <select
+                value={profile.grade}
+                onChange={(e) => handleInputChange('grade', e.target.value)}
+                disabled={!isEditing}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              >
+                <option value="">Select Grade</option>
+                <option value="Grade 6">Grade 6</option>
+                <option value="Grade 7">Grade 7</option>
+                <option value="Grade 8">Grade 8</option>
+                <option value="Grade 9">Grade 9</option>
+                <option value="Grade 10">Grade 10</option>
+                <option value="Grade 11">Grade 11</option>
+                <option value="Grade 12">Grade 12</option>
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Blood Group</label>
+                <select
+                  value={profile.blood_group}
+                  onChange={(e) => handleInputChange('blood_group', e.target.value)}
+                  disabled={!isEditing}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+                >
+                  <option value="">Select Blood Group</option>
+                  <option value="A+">A+</option>
+                  <option value="A-">A-</option>
+                  <option value="B+">B+</option>
+                  <option value="B-">B-</option>
+                  <option value="AB+">AB+</option>
+                  <option value="AB-">AB-</option>
+                  <option value="O+">O+</option>
+                  <option value="O-">O-</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">WhatsApp Number *</label>
+                <input
+                  type="tel"
+                  value={profile.whatsapp_no}
+                  onChange={(e) => handleInputChange('whatsapp_no', e.target.value)}
+                  placeholder="+91 9876543210"
+                  disabled={!isEditing}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* School Information */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">School Information</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">School Name *</label>
+              <input
+                type="text"
+                value={profile.school_name}
+                onChange={(e) => handleInputChange('school_name', e.target.value)}
+                disabled={!isEditing}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">School Address *</label>
+              <textarea
+                value={profile.school_address}
+                onChange={(e) => handleInputChange('school_address', e.target.value)}
+                disabled={!isEditing}
+                rows={3}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">School Email *</label>
+              <input
+                type="email"
+                value={profile.school_email}
+                onChange={(e) => handleInputChange('school_email', e.target.value)}
+                disabled={!isEditing}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Teacher Email</label>
+              <input
+                type="email"
+                value={profile.teacher_email}
+                onChange={(e) => handleInputChange('teacher_email', e.target.value)}
+                disabled={!isEditing}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Teacher Phone</label>
+                <input
+                  type="tel"
+                  value={profile.teacher_phone}
+                  onChange={(e) => handleInputChange('teacher_phone', e.target.value)}
+                  disabled={!isEditing}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Principal Phone</label>
+                <input
+                  type="tel"
+                  value={profile.principal_phone}
+                  onChange={(e) => handleInputChange('principal_phone', e.target.value)}
+                  disabled={!isEditing}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Principal Email</label>
+              <input
+                type="email"
+                value={profile.principal_email}
+                onChange={(e) => handleInputChange('principal_email', e.target.value)}
+                disabled={!isEditing}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Parent & Emergency Information */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Parent & Emergency Information</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Parent Email *</label>
+              <input
+                type="email"
+                value={profile.parent_email}
+                onChange={(e) => handleInputChange('parent_email', e.target.value)}
+                disabled={!isEditing}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Emergency Contact</label>
+              <input
+                type="tel"
+                value={profile.emergency_contact}
+                onChange={(e) => handleInputChange('emergency_contact', e.target.value)}
+                placeholder="Emergency contact number"
+                disabled={!isEditing}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Allergies / Medical Conditions</label>
+              <textarea
+                value={profile.allergies}
+                onChange={(e) => handleInputChange('allergies', e.target.value)}
+                placeholder="Any allergies or medical conditions to be aware of..."
+                disabled={!isEditing}
+                rows={3}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Additional Information */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Additional Information</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Hobbies & Interests</label>
+              <textarea
+                value={profile.hobbies}
+                onChange={(e) => handleInputChange('hobbies', e.target.value)}
+                placeholder="What do you enjoy doing in your free time?"
+                disabled={!isEditing}
+                rows={3}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:bg-gray-100"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Favorite Subjects</label>
+              <div className="grid grid-cols-2 gap-2">
+                {['Mathematics', 'Science', 'English', 'History', 'Geography', 'Art'].map((subject) => (
+                  <label key={subject} className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={profile.subjects_of_interest.includes(subject)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          handleInputChange('subjects_of_interest', [...profile.subjects_of_interest, subject]);
+                        } else {
+                          handleInputChange('subjects_of_interest', profile.subjects_of_interest.filter(s => s !== subject));
+                        }
+                      }}
+                      disabled={!isEditing}
+                      className="mr-2"
+                    />
+                    <span className="text-sm text-gray-700">{subject}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Student PDF Manager Component
+const StudentPDFManager = () => {
+  const [pdfs, setPdfs] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [selectedPdf, setSelectedPdf] = useState(null);
+  const [question, setQuestion] = useState('');
+  const [askLoading, setAskLoading] = useState(false);
+  const [conversations, setConversations] = useState({});
+
+  useEffect(() => {
+    fetchMyPdfs();
+  }, []);
+
+  const fetchMyPdfs = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get('/student/my-pdfs');
+      setPdfs(response.data.pdfs || []);
+    } catch (error) {
+      toast.error('Failed to load PDFs');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      toast.error('Please upload only PDF files');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await axios.post('/student/upload-pdf', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      toast.success(`PDF uploaded! ${response.data.pages_processed} pages processed for Q&A.`);
+      fetchMyPdfs();
+      event.target.value = ''; // Reset file input
+    } catch (error) {
+      toast.error('Failed to upload PDF');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const askQuestion = async () => {
+    if (!question.trim() || !selectedPdf) return;
+
+    setAskLoading(true);
+    try {
+      // Extract material_id from the PDF (need to construct it)
+      const materialId = `student_${selectedPdf.student_id}_${selectedPdf.filename.split('_')[0]}`;
+      
+      const response = await axios.post('/student/ask-my-pdf', null, {
+        params: {
+          material_id: materialId,
+          question: question
+        }
+      });
+
+      // Add to conversation for this PDF
+      const pdfId = selectedPdf.filename;
+      setConversations(prev => ({
+        ...prev,
+        [pdfId]: [
+          ...(prev[pdfId] || []),
+          {
+            type: 'question',
+            text: question,
+            timestamp: new Date()
+          },
+          {
+            type: 'answer',
+            text: response.data.answer,
+            timestamp: new Date()
+          }
+        ]
+      }));
+
+      setQuestion('');
+      toast.success('Question answered based on your PDF!');
+    } catch (error) {
+      toast.error('Failed to get answer from PDF');
+    } finally {
+      setAskLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">My PDF Documents</h1>
+        <p className="text-gray-600">Upload your own PDFs and ask questions about them</p>
+      </div>
+
+      {/* Upload Section */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload New PDF</h3>
+        
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Choose PDF File (Study materials, notes, textbooks, etc.)
+          </label>
+          <input
+            type="file"
+            accept=".pdf"
+            onChange={handleFileUpload}
+            disabled={uploading}
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"
+          />
+        </div>
+
+        {uploading && (
+          <div className="text-center text-emerald-600">
+            <p>Processing PDF and creating searchable index...</p>
+          </div>
+        )}
+      </div>
+
+      {/* My PDFs */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">My Uploaded Documents</h3>
+        
+        {loading ? (
+          <p className="text-gray-500">Loading PDFs...</p>
+        ) : pdfs.length > 0 ? (
+          <div className="grid gap-4">
+            {pdfs.map((pdf) => (
+              <div 
+                key={pdf.filename} 
+                className={`border rounded-lg p-4 cursor-pointer hover:bg-gray-50 ${
+                  selectedPdf?.filename === pdf.filename ? 'bg-emerald-50 border-emerald-500' : ''
+                }`}
+                onClick={() => setSelectedPdf(pdf)}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium text-gray-900">📄 {pdf.original_filename}</h4>
+                    <p className="text-gray-500 text-sm">
+                      Uploaded: {new Date(pdf.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <div className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
+                      ✅ Ready for Q&A
+                    </div>
+                    <p className="text-gray-500 text-xs mt-1">
+                      {(pdf.file_size / 1024).toFixed(1)} KB
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg">No PDFs uploaded yet</p>
+            <p className="text-gray-400">Upload your first PDF to start asking questions</p>
+          </div>
+        )}
+      </div>
+
+      {/* Q&A Section */}
+      {selectedPdf && (
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Ask Questions about: {selectedPdf.original_filename}
+          </h3>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Your Question</label>
+              <textarea
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                placeholder="Ask anything about this document..."
+                className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-emerald-500 min-h-[100px]"
+              />
+            </div>
+
+            <button
+              onClick={askQuestion}
+              disabled={askLoading || !question.trim()}
+              className="w-full bg-emerald-500 text-white py-3 rounded-lg font-semibold hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {askLoading ? 'Searching Document...' : 'Ask Question'}
+            </button>
+          </div>
+
+          {/* Conversation History for selected PDF */}
+          {conversations[selectedPdf.filename] && conversations[selectedPdf.filename].length > 0 && (
+            <div className="mt-6 space-y-4">
+              <h4 className="text-lg font-semibold text-gray-900">Q&A History</h4>
+              <div className="space-y-4 max-h-96 overflow-y-auto">
+                {conversations[selectedPdf.filename].map((msg, idx) => (
+                  <div key={idx} className={`p-4 rounded-xl ${
+                    msg.type === 'question' 
+                      ? 'bg-emerald-50 border-l-4 border-emerald-500' 
+                      : 'bg-blue-50 border-l-4 border-blue-500'
+                  }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-sm text-gray-600">
+                        {msg.type === 'question' ? '❓ Your Question:' : '🤖 AI Answer:'}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {msg.timestamp.toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <p className="text-gray-800 whitespace-pre-wrap">{msg.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// WhatsApp Monitor Component (for teachers)
+const WhatsAppMonitor = () => {
+  const [whatsappUsers, setWhatsappUsers] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [selectedPhone, setSelectedPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetchWhatsappUsers();
+    fetchMessages();
+  }, []);
+
+  const fetchWhatsappUsers = async () => {
+    try {
+      const response = await axios.get('/whatsapp/users');
+      setWhatsappUsers(response.data.whatsapp_users || []);
+    } catch (error) {
+      console.error('Failed to load WhatsApp users:', error);
+      toast.error('Failed to load WhatsApp users');
+    }
+  };
+
+  const fetchMessages = async (phoneNumber = '') => {
+    setLoading(true);
+    try {
+      const params = phoneNumber ? `?phone_number=${phoneNumber}` : '';
+      const response = await axios.get(`/whatsapp/messages${params}`);
+      setMessages(response.data.messages || []);
+    } catch (error) {
+      console.error('Failed to load messages:', error);
+      toast.error('Failed to load messages');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePhoneSelect = (phone) => {
+    setSelectedPhone(phone);
+    fetchMessages(phone);
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">WhatsApp AI Tutor Monitor</h1>
+        <p className="text-gray-600">Monitor student interactions with the WhatsApp AI tutor</p>
+      </div>
+
+      {/* WhatsApp Setup Info */}
+      <div className="bg-green-50 border border-green-200 rounded-xl p-6">
+        <h3 className="text-lg font-semibold text-green-900 mb-2">📱 WhatsApp Integration Status</h3>
+        <div className="text-green-800">
+          <p>✅ WhatsApp webhook configured</p>
+          <p>🤖 AI tutor responses enabled</p>
+          <p>📊 Students can generate quizzes via WhatsApp</p>
+          <p>❓ Students can ask questions and get answers from course materials</p>
+        </div>
+        <div className="mt-3 text-sm text-green-700 bg-green-100 p-3 rounded">
+          <strong>For students to use WhatsApp AI:</strong><br />
+          1. Send a WhatsApp message to the configured number<br />
+          2. Start with "register [name] [email]" to register<br />
+          3. Then ask questions or use commands like "quiz math algebra"
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Registered Users */}
+        <div className="bg-white rounded-xl p-6 shadow-sm border">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            📞 Registered Users ({whatsappUsers.length})
+          </h3>
+          
+          {whatsappUsers.length > 0 ? (
+            <div className="space-y-3">
+              {whatsappUsers.map((user) => (
+                <div 
+                  key={user.phone_number}
+                  className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                    selectedPhone === user.phone_number 
+                      ? 'bg-emerald-100 border-emerald-500 border' 
+                      : 'bg-gray-50 hover:bg-gray-100'
+                  }`}
+                  onClick={() => handlePhoneSelect(user.phone_number)}
+                >
+                  <div className="font-medium text-gray-900">
+                    {user.name || 'Unknown'}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    {user.phone_number}
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      user.registered 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {user.registered ? '✅ Registered' : '⏳ Pending'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {new Date(user.last_activity).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <MessageCircle className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+              <p className="text-gray-500">No WhatsApp users yet</p>
+            </div>
+          )}
+        </div>
+
+        {/* Messages */}
+        <div className="lg:col-span-2 bg-white rounded-xl p-6 shadow-sm border">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">
+              💬 Recent Messages {selectedPhone && `(${selectedPhone})`}
+            </h3>
+            <button
+              onClick={() => fetchMessages(selectedPhone)}
+              disabled={loading}
+              className="px-3 py-1 bg-emerald-500 text-white rounded text-sm hover:bg-emerald-600 disabled:opacity-50"
+            >
+              {loading ? 'Loading...' : 'Refresh'}
+            </button>
+          </div>
+
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {messages.length > 0 ? (
+              messages.map((msg) => (
+                <div key={msg.id} className={`p-3 rounded-lg ${
+                  msg.message_type === 'incoming' 
+                    ? 'bg-blue-50 border-l-4 border-blue-500' 
+                    : 'bg-green-50 border-l-4 border-green-500'
+                }`}>
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="text-sm font-medium text-gray-600">
+                      {msg.message_type === 'incoming' ? '👤 Student' : '🤖 AI Tutor'}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {new Date(msg.created_at).toLocaleString()}
+                    </div>
+                  </div>
+                  <p className="text-gray-800 whitespace-pre-wrap text-sm">
+                    {msg.message_text}
+                  </p>
+                  <div className="text-xs text-gray-500 mt-1">
+                    From: {msg.phone_number}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8">
+                <p className="text-gray-500">
+                  {selectedPhone ? 'No messages from this user' : 'Select a user to view messages'}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Statistics */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">📊 WhatsApp Activity Stats</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-emerald-600">{whatsappUsers.length}</div>
+            <div className="text-gray-600 text-sm">Total Users</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-600">
+              {whatsappUsers.filter(u => u.registered).length}
+            </div>
+            <div className="text-gray-600 text-sm">Registered</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-purple-600">{messages.length}</div>
+            <div className="text-gray-600 text-sm">Total Messages</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-orange-600">
+              {messages.filter(m => m.message_type === 'incoming').length}
+            </div>
+            <div className="text-gray-600 text-sm">Student Messages</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// My Children Component (for parents)
+
+const MyChildren = () => {
+  const [children, setChildren] = useState([]);
+  const [childrenProgress, setChildrenProgress] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  useEffect(() => {
+    fetchChildrenData();
+  }, []);
+
+  const fetchChildrenData = async () => {
+    try {
+      // Fetch linked students
+      const studentsResponse = await axios.get('/parent/students');
+      const students = studentsResponse.data.students;
+      setChildren(students);
+
+      // Fetch progress for each child (reuse dashboard logic)
+      const progressPromises = students.map(async (child) => {
+        try {
+          const progressResponse = await axios.get(`/parent/progress-report/${child.id}`);
+          return { id: child.id, progress: progressResponse.data.overall_performance };
+        } catch (error) {
+          console.error(`Failed to fetch progress for ${child.name}:`, error);
+          return { id: child.id, progress: null }; // Handle missing progress gracefully
+        }
+      });
+
+      const progressResults = await Promise.all(progressPromises);
+      const progressMap = {};
+      progressResults.forEach(({ id, progress }) => {
+        progressMap[id] = progress;
+      });
+      setChildrenProgress(progressMap);
+    } catch (error) {
+      toast.error('Failed to load children data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddChildSuccess = () => {
+    fetchChildrenData(); // Refresh data after adding a child
+  };
+
+  const viewFullProgress = (childId) => {
+    // Navigate to ProgressReports or open a modal with full report
+    // For simplicity, you can use React Router: navigate(`/progress-reports?child=${childId}`);
+    // Or implement a modal here. For now, show a toast.
+    toast.success('Redirecting to full progress report...');
+    // Example: window.location.href = `/progress-reports?child=${childId}`;
+  };
+
+  if (loading) return <div className="p-6">Loading children data...</div>;
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">My Children</h1>
+          <p className="text-gray-600">Monitor your children's educational progress</p>
+        </div>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+        >
+          Add Child
+        </button>
+      </div>
+
+      {children.length === 0 ? (
+        <div className="bg-white rounded-xl p-6 shadow-sm border text-center">
+          <p className="text-gray-500 mb-4">No children linked yet. Add your first child to get started!</p>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600"
+          >
+            Add Child
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {children.map((child) => {
+            const progress = childrenProgress[child.id];
+            return (
+              <div key={child.id} className="bg-white rounded-xl p-6 shadow-sm border hover:shadow-lg transition-shadow">
+                <div className="flex items-center space-x-4 mb-4">
+                  <div className="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center">
+                    <User className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">{child.name}</h3>
+                    <p className="text-gray-600 text-sm">{child.email}</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-2 text-sm mb-4">
+                  <p><span className="font-medium">Student ID:</span> {child.id}</p>
+                  <p><span className="font-medium">Role:</span> {child.role}</p>
+                  <p><span className="font-medium">Joined:</span> {new Date(child.created_at).toLocaleDateString()}</p>
+                </div>
+                
+                {/* Insights Section */}
+                {progress ? (
+                  <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                    <h4 className="font-medium text-gray-900 mb-2">Quick Insights</h4>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <p className="text-gray-600">Avg Score</p>
+                        <p className="font-bold text-emerald-600">{progress.average_score}%</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Quizzes</p>
+                        <p className="font-bold text-blue-600">{progress.total_quizzes}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Questions</p>
+                        <p className="font-bold text-purple-600">{progress.total_questions_asked}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Trend</p>
+                        <p className={`font-bold ${progress.performance_trend === 'improving' ? 'text-green-600' : 'text-orange-600'}`}>
+                          {progress.performance_trend === 'improving' ? '↗️' : '⚠️'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 p-4 rounded-lg mb-4 text-center">
+                    <p className="text-gray-500 text-sm">No progress data available yet.</p>
+                  </div>
+                )}
+                
+                <button
+                  onClick={() => viewFullProgress(child.id)}
+                  className="w-full bg-emerald-500 text-white py-2 rounded-lg hover:bg-emerald-600 transition-colors"
+                >
+                  View Full Progress
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <AddChildModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={handleAddChildSuccess}
+      />
+    </div>
+  );
+};
+
+
+
+// Progress Reports Component (for parents)
+
+
+const ProgressReports = () => {
+  const [selectedChild, setSelectedChild] = useState('');
+  const [children, setChildren] = useState([]);
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [filterSubject, setFilterSubject] = useState('');
+
+  useEffect(() => {
+    fetchChildren();
+  }, []);
+
+  const fetchChildren = async () => {
+    try {
+      const response = await axios.get('/parent/students');
+      setChildren(response.data.students);
+    } catch (error) {
+      toast.error('Failed to load children');
+    }
+  };
+
+  // In generateReport: pass selectedChild as _id instead of id
+  const generateReport = async () => {
+    if (!selectedChild) {
+      toast.error('Please select a child');
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await axios.get(`/parent/progress-report/${selectedChild}`);
+      setReport(response.data);
+      toast.success('Report generated successfully');
+    } catch (error) {
+      const message = error.response?.data?.detail || 'Failed to generate report';
+      toast.error(message);
+      setReport(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  const exportReport = () => {
+    if (!report) {
+      toast.error('No report to export');
+      return;
+    }
+    // Mock export: In a real app, generate a PDF or CSV
+    const dataStr = JSON.stringify(report, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    const exportFileDefaultName = 'progress-report.json';
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+    toast.success('Report exported');
+  };
+
+  const filteredReport = report ? {
+    ...report,
+    subject_performance: Object.fromEntries(
+      Object.entries(report.subject_performance || {}).filter(([subject]) =>
+        !filterSubject || subject.toLowerCase().includes(filterSubject.toLowerCase())
+      )
+    )
+  } : null;
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Progress Reports</h1>
+        <p className="text-gray-600">Generate comprehensive progress reports for your children</p>
+      </div>
+
+      {/* Child Selection */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Child</h3>
+        <div className="flex gap-4">
+
+
+            <select
+              value={selectedChild}
+              onChange={(e) => setSelectedChild(e.target.value)}
+              className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="">Select a child...</option>
+              {children.map((child) => (
+                <option key={child._id} value={child._id}>{child.name}</option>
+              ))}
+            </select>
+
+          <button
+            onClick={generateReport}
+            disabled={!selectedChild || loading}
+            className="px-6 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+          >
+            {loading ? 'Generating...' : 'Generate Report'}
+          </button>
+        </div>
+      </div>
+
+      {/* Filters and Export */}
+      {report && (
+        <div className="bg-white rounded-xl p-4 shadow-sm border flex justify-between items-center">
+          <div className="flex gap-4">
+            <input
+              type="text"
+              placeholder="Filter by subject"
+              value={filterSubject}
+              onChange={(e) => setFilterSubject(e.target.value)}
+              className="px-4 py-2 border rounded-lg"
+            />
+          </div>
+          <button
+            onClick={exportReport}
+            className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+          >
+            Export Report
+          </button>
+        </div>
+      )}
+
+      {/* Progress Report Display */}
+      {report && (
+        <div className="space-y-6">
+          {/* Student Info */}
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">Student Information</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-gray-600">Name</p>
+                <p className="font-medium">{filteredReport.student_info.name}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Email</p>
+                <p className="font-medium">{filteredReport.student_info.email}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Overall Performance */}
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">Overall Performance</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-emerald-600">{filteredReport.overall_performance.total_quizzes}</p>
+                <p className="text-gray-600">Quizzes Taken</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-blue-600">{filteredReport.overall_performance.average_score}%</p>
+                <p className="text-gray-600">Average Score</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-purple-600">{filteredReport.overall_performance.total_questions_asked}</p>
+                <p className="text-gray-600">Questions Asked</p>
+              </div>
+              <div className="text-center">
+                <p className={`text-2xl font-bold ${filteredReport.overall_performance.performance_trend === 'improving' ? 'text-green-600' : 'text-orange-600'}`}>
+                  {filteredReport.overall_performance.performance_trend === 'improving' ? '↗️' : '⚠️'}
+                </p>
+                <p className="text-gray-600">Trend</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Subject Performance */}
+          {Object.keys(filteredReport.subject_performance || {}).length > 0 && (
+            <div className="bg-white rounded-xl p-6 shadow-sm border">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">Subject Performance</h3>
+              <div className="space-y-4">
+                {Object.entries(filteredReport.subject_performance).map(([subject, stats]) => (
+                  <div key={subject} className="p-4 bg-gray-50 rounded-lg">
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="font-medium text-gray-900">{subject}</h4>
+                      <span className="text-lg font-bold text-emerald-600">{stats.average_score.toFixed(1)}%</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-gray-600">
+                      <span>Attempts: {stats.attempts}</span>
+                      <span>Latest: {stats.latest_score}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* AI Insights */}
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">AI Insights & Recommendations</h3>
+            <div className="prose max-w-none">
+              <p className="text-gray-700">{filteredReport.ai_insights}</p>
+            </div>
+          </div>
+
+          {/* Learning Path */}
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">Learning Assessment</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">Current Level</h4>
+                <p className="text-emerald-600 font-semibold capitalize">{filteredReport.learning_path.current_level}</p>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">Strong Areas</h4>
+                <div className="space-y-1">
+                  {filteredReport.learning_path.strong_areas.map((area, idx) => (
+                    <p key={idx} className="text-green-600 text-sm">{area}</p>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">Improvement Areas</h4>
+                <div className="space-y-1">
+                  {filteredReport.learning_path.weak_areas.map((area, idx) => (
+                    <p key={idx} className="text-orange-600 text-sm">{area}</p>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
+const AddChildModal = ({ isOpen, onClose, onSuccess }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!email || !password) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+    setLoading(true);
+    try {
+      await axios.post('/parent/link-child', { email, password });
+      toast.success('Child linked successfully!');
+      onSuccess();  // Refresh data
+      onClose();
+      setEmail('');
+      setPassword('');
+    } catch (error) {
+      const message = error.response?.data?.detail || 'Failed to link child';
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
+        <h2 className="text-xl font-bold mb-4">Add Child</h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <input
+            type="email"
+            placeholder="Child's Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+            required
+          />
+          <input
+            type="password"
+            placeholder="Child's App Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+            required
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+            >
+              {loading ? 'Linking...' : 'Link Child'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const ConfirmationDialog = ({ open, title, message, confirmText = 'Confirm', cancelText = 'Cancel', loading, onCancel, onConfirm }) => {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black bg-opacity-40 flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-white rounded-xl shadow-xl border p-6">
+        <h3 className="text-xl font-semibold text-gray-900 mb-2">{title}</h3>
+        <p className="text-sm text-gray-600 mb-6">{message}</p>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 disabled:opacity-50"
+          >
+            {cancelText}
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {loading ? 'Processing...' : confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AdminOverview = () => {
+  const [stats, setStats] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchOverview = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get('/admin/overview');
+      setStats(response.data.stats || null);
+       setAnalytics(response.data.analytics || null);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to load overview');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOverview();
+  }, []);
+
+  if (loading) return <div className="p-6">Loading admin overview...</div>;
+
+  const userGrowthData = {
+    labels: analytics?.user_growth?.labels || [],
+    datasets: [
+      {
+        label: 'New Users',
+        data: analytics?.user_growth?.values || [],
+        borderColor: '#0f766e',
+        backgroundColor: 'rgba(15,118,110,0.2)',
+        tension: 0.3,
+        fill: true,
+      },
+    ],
+  };
+
+  const paymentGrowthData = {
+    labels: analytics?.payment_growth?.labels || [],
+    datasets: [
+      {
+        label: 'Payments (Rs)',
+        data: (analytics?.payment_growth?.values || []).map((v) => Number((v / 100).toFixed(2))),
+        backgroundColor: '#15803d',
+      },
+    ],
+  };
+
+  const distributionItems = analytics?.subscription_distribution || [];
+  const distributionData = {
+    labels: distributionItems.map((d) => d.label),
+    datasets: [
+      {
+        label: 'Users',
+        data: distributionItems.map((d) => d.value),
+        backgroundColor: ['#0f766e', '#f59e0b', '#2563eb', '#7c3aed', '#dc2626'],
+      },
+    ],
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Dashboard</h1>
+          <p className="text-gray-600">Platform summary and system health snapshot</p>
+        </div>
+        <button
+          onClick={fetchOverview}
+          className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+        >
+          Refresh
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="bg-white rounded-xl p-4 border"><p className="text-xs text-gray-500">Total Users</p><p className="text-2xl font-bold">{stats?.total_users || 0}</p></div>
+        <div className="bg-white rounded-xl p-4 border"><p className="text-xs text-gray-500">Students</p><p className="text-2xl font-bold">{stats?.students || 0}</p></div>
+        <div className="bg-white rounded-xl p-4 border"><p className="text-xs text-gray-500">Free Tier</p><p className="text-2xl font-bold text-teal-700">{stats?.free_tier_users || 0}</p></div>
+        <div className="bg-white rounded-xl p-4 border"><p className="text-xs text-gray-500">Monthly Subs</p><p className="text-2xl font-bold text-blue-700">{stats?.monthly_subscribers || 0}</p></div>
+        <div className="bg-white rounded-xl p-4 border"><p className="text-xs text-gray-500">Yearly Subs</p><p className="text-2xl font-bold text-violet-700">{stats?.yearly_subscribers || 0}</p></div>
+        <div className="bg-white rounded-xl p-4 border"><p className="text-xs text-gray-500">Trial Ended</p><p className="text-2xl font-bold text-amber-700">{stats?.free_trial_ended_users || 0}</p></div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl p-4 border"><p className="text-xs text-gray-500">Registrations Today</p><p className="text-2xl font-bold">{stats?.registrations_today || 0}</p></div>
+        <div className="bg-white rounded-xl p-4 border"><p className="text-xs text-gray-500">Registrations This Month</p><p className="text-2xl font-bold">{stats?.registrations_this_month || 0}</p></div>
+        <div className="bg-white rounded-xl p-4 border"><p className="text-xs text-gray-500">Payments Today</p><p className="text-2xl font-bold text-emerald-700">Rs {((stats?.payments_collected_today || 0) / 100).toFixed(0)}</p></div>
+        <div className="bg-white rounded-xl p-4 border"><p className="text-xs text-gray-500">Payments This Month</p><p className="text-2xl font-bold text-emerald-700">Rs {((stats?.payments_collected_this_month || 0) / 100).toFixed(0)}</p></div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl p-4 border">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">User Growth (Last 30 Days)</h3>
+          <Line data={userGrowthData} />
+        </div>
+        <div className="bg-white rounded-xl p-4 border">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Payment Collection Trend</h3>
+          <Bar data={paymentGrowthData} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl p-4 border">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Subscription Distribution</h3>
+          <Pie data={distributionData} />
+        </div>
+        <div className="bg-white rounded-xl p-4 border">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">System Snapshot</h3>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <p><span className="font-medium">Teachers:</span> {stats?.teachers || 0}</p>
+            <p><span className="font-medium">Parents:</span> {stats?.parents || 0}</p>
+            <p><span className="font-medium">Admins:</span> {stats?.admins || 0}</p>
+            <p><span className="font-medium">Blocked Users:</span> {stats?.blocked || 0}</p>
+            <p><span className="font-medium">Active Subs:</span> {stats?.active_subscriptions || 0}</p>
+            <p><span className="font-medium">Trial Active:</span> {stats?.free_trial_active_users || 0}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AdminUserManagement = () => {
+  const { user } = useAuth();
+  const [users, setUsers] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalPages, setTotalPages] = useState(0);
+
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+
+  const [confirmConfig, setConfirmConfig] = useState({
+    open: false,
+    title: '',
+    message: '',
+    confirmText: 'Confirm',
+    action: null,
+  });
+  const [restoreDialog, setRestoreDialog] = useState({
+    open: false,
+    userId: '',
+    email: '',
+    restoreOption: 'previous',
+    reason: 'Restored by admin from dashboard',
+  });
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.get('/admin/users', {
+        params: {
+          page,
+          page_size: pageSize,
+          role: roleFilter,
+          status: statusFilter,
+          search,
+        },
+      });
+      setUsers(response.data.users || []);
+      setStats(response.data.stats || null);
+      setTotalPages(response.data.pagination?.total_pages || 0);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to load users');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers();
+  }, [page, pageSize, roleFilter, statusFilter, search]);
+
+  const requestAction = (title, message, confirmText, action) => {
+    setConfirmConfig({ open: true, title, message, confirmText, action });
+  };
+
+  const closeDialog = () => {
+    setConfirmConfig({ open: false, title: '', message: '', confirmText: 'Confirm', action: null });
+  };
+
+  const executeConfirmedAction = async () => {
+    if (!confirmConfig.action) return;
+    setActionLoading(true);
+    try {
+      await confirmConfig.action();
+      toast.success('Action completed successfully');
+      closeDialog();
+      await fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Action failed');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const applySearch = () => {
+    setPage(1);
+    setSearch(searchInput.trim());
+  };
+
+  const openRestoreDialog = (userId, email) => {
+    setRestoreDialog({
+      open: true,
+      userId,
+      email,
+      restoreOption: 'previous',
+      reason: `Restored by admin from dashboard for ${email}`,
+    });
+  };
+
+  const closeRestoreDialog = () => {
+    setRestoreDialog({
+      open: false,
+      userId: '',
+      email: '',
+      restoreOption: 'previous',
+      reason: 'Restored by admin from dashboard',
+    });
+  };
+
+  const confirmRestore = async () => {
+    setActionLoading(true);
+    try {
+      await axios.post(`/admin/users/${restoreDialog.userId}/restore-subscription`, {
+        restore_option: restoreDialog.restoreOption,
+        reason: restoreDialog.reason,
+      });
+      toast.success('Subscription restored successfully');
+      closeRestoreDialog();
+      await fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to restore subscription');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">User Management</h1>
+          <p className="text-gray-600">Paginated, filterable user management with safe admin actions</p>
+        </div>
+        <button
+          onClick={fetchUsers}
+          className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+        >
+          Refresh List
+        </button>
+      </div>
+
+      {stats && (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+          <div className="bg-white rounded-lg border p-3"><p className="text-xs text-gray-500">Total</p><p className="font-bold">{stats.total_users}</p></div>
+          <div className="bg-white rounded-lg border p-3"><p className="text-xs text-gray-500">Students</p><p className="font-bold">{stats.students}</p></div>
+          <div className="bg-white rounded-lg border p-3"><p className="text-xs text-gray-500">Free Tier</p><p className="font-bold text-teal-700">{stats.free_tier_users}</p></div>
+          <div className="bg-white rounded-lg border p-3"><p className="text-xs text-gray-500">Monthly</p><p className="font-bold text-blue-700">{stats.monthly_subscribers}</p></div>
+          <div className="bg-white rounded-lg border p-3"><p className="text-xs text-gray-500">Yearly</p><p className="font-bold text-violet-700">{stats.yearly_subscribers}</p></div>
+          <div className="bg-white rounded-lg border p-3"><p className="text-xs text-gray-500">Trial Ended</p><p className="font-bold text-amber-700">{stats.free_trial_ended_users}</p></div>
+          <div className="bg-white rounded-lg border p-3"><p className="text-xs text-gray-500">Blocked</p><p className="font-bold text-red-600">{stats.blocked}</p></div>
+          <div className="bg-white rounded-lg border p-3"><p className="text-xs text-gray-500">Active Subs</p><p className="font-bold text-blue-700">{stats.active_subscriptions}</p></div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl border p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="lg:col-span-2 flex gap-2">
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && applySearch()}
+            placeholder="Search by email"
+            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500"
+          />
+          <button onClick={applySearch} className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600">Search</button>
+        </div>
+
+        <select value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }} className="px-3 py-2 border rounded-lg">
+          <option value="all">All Roles</option>
+          <option value="student">Student</option>
+          <option value="teacher">Teacher</option>
+          <option value="parent">Parent</option>
+          <option value="admin">Admin</option>
+        </select>
+
+        <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} className="px-3 py-2 border rounded-lg">
+          <option value="all">All Status</option>
+          <option value="blocked">Blocked</option>
+          <option value="active_subscription">Active Subscription</option>
+          <option value="monthly_subscription">Monthly Subscription</option>
+          <option value="yearly_subscription">Yearly Subscription</option>
+          <option value="free_tier">Free Tier</option>
+          <option value="free_trial_active">Free Trial Active</option>
+          <option value="free_trial_ended">Free Trial Ended</option>
+          <option value="trial_active">Trial Active</option>
+          <option value="payment_required">Payment Required</option>
+          <option value="unblocked">Unblocked</option>
+        </select>
+
+        <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} className="px-3 py-2 border rounded-lg">
+          <option value={10}>10 / page</option>
+          <option value={20}>20 / page</option>
+          <option value={50}>50 / page</option>
+        </select>
+      </div>
+
+      <div className="bg-white rounded-xl border shadow-sm overflow-x-auto">
+        {loading ? (
+          <div className="p-8 text-center text-gray-500">Loading users...</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="text-left px-4 py-3">User</th>
+                <th className="text-left px-4 py-3">Role</th>
+                <th className="text-left px-4 py-3">Status</th>
+                <th className="text-left px-4 py-3">Plan</th>
+                <th className="text-left px-4 py-3">Next Billing</th>
+                <th className="text-left px-4 py-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((item) => {
+                const access = item.student_access || {};
+                const isCurrentAdmin = user?.id === item.id;
+                const lifecycleLabel = (access.lifecycle_status || access.status || 'UNKNOWN').replaceAll('_', ' ');
+                const hasActivePaidPlan = ['MONTHLY_SUBSCRIPTION', 'YEARLY_SUBSCRIPTION'].includes(access.lifecycle_status);
+                return (
+                  <tr key={item.id} className="border-t">
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-gray-900">{item.name}</p>
+                      <p className="text-gray-500">{item.email}</p>
+                    </td>
+                    <td className="px-4 py-3 capitalize">{item.role}</td>
+                    <td className="px-4 py-3">
+                      <div className="space-y-1">
+                        <span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                          {lifecycleLabel}
+                        </span>
+                        {access.status && (
+                          <p className="text-xs text-gray-500">Access: {access.status.replaceAll('_', ' ')}</p>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">{access.subscription?.plan_name || '-'}</td>
+                    <td className="px-4 py-3">{access.next_billing_date ? new Date(access.next_billing_date).toLocaleDateString() : '-'}</td>
+                    <td className="px-4 py-3">
+                      {isCurrentAdmin ? (
+                        <span className="text-gray-400">Current admin</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {item.is_blocked ? (
+                            <button
+                              onClick={() => requestAction(
+                                'Unblock User',
+                                `Do you want to unblock ${item.email}?`,
+                                'Unblock',
+                                () => axios.post(`/admin/users/${item.id}/unblock`)
+                              )}
+                              className="px-2 py-1 rounded bg-green-100 text-green-700 hover:bg-green-200"
+                            >
+                              <Unlock className="w-4 h-4 inline mr-1" />Unblock
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => requestAction(
+                                'Block User',
+                                `Do you want to block ${item.email}?`,
+                                'Block',
+                                () => axios.post(`/admin/users/${item.id}/block`, { reason: 'Blocked by admin from dashboard' })
+                              )}
+                              className="px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200"
+                            >
+                              <Ban className="w-4 h-4 inline mr-1" />Block
+                            </button>
+                          )}
+
+                          {item.role === 'student' && (
+                            <>
+                              <button
+                                onClick={() => requestAction(
+                                  'Cancel Subscription',
+                                  `Cancel active subscription for ${item.email}?`,
+                                  'Cancel Subscription',
+                                  () => axios.post(`/admin/users/${item.id}/cancel-subscription`, { reason: 'Canceled by admin from dashboard' })
+                                )}
+                                disabled={!hasActivePaidPlan}
+                                className="px-2 py-1 rounded bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                <ShieldCheck className="w-4 h-4 inline mr-1" />Cancel Plan
+                              </button>
+                              <button
+                                onClick={() => openRestoreDialog(item.id, item.email)}
+                                className="px-2 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
+                              >
+                                <RefreshCcw className="w-4 h-4 inline mr-1" />Restore
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {!users.length && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-500">No users found for selected filters.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-600">Page {page} of {totalPages || 1}</p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <button
+            onClick={() => setPage((p) => (totalPages ? Math.min(totalPages, p + 1) : p + 1))}
+            disabled={totalPages ? page >= totalPages : users.length < pageSize}
+            className="px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+
+      <ConfirmationDialog
+        open={confirmConfig.open}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmText={confirmConfig.confirmText}
+        loading={actionLoading}
+        onCancel={closeDialog}
+        onConfirm={executeConfirmedAction}
+      />
+
+      {restoreDialog.open && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-40 flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white rounded-xl shadow-xl border p-6 space-y-4">
+            <h3 className="text-xl font-semibold text-gray-900">Restore Subscription</h3>
+            <p className="text-sm text-gray-600">Choose restore plan for {restoreDialog.email}</p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Restore Option</label>
+              <select
+                value={restoreDialog.restoreOption}
+                onChange={(e) => setRestoreDialog((prev) => ({ ...prev, restoreOption: e.target.value }))}
+                className="w-full px-3 py-2 border rounded-lg"
+              >
+                <option value="previous">Previous subscription plan</option>
+                <option value="monthly">Monthly plan (Rs 199)</option>
+                <option value="yearly">Yearly plan (Rs 1799)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Reason</label>
+              <input
+                type="text"
+                value={restoreDialog.reason}
+                onChange={(e) => setRestoreDialog((prev) => ({ ...prev, reason: e.target.value }))}
+                className="w-full px-3 py-2 border rounded-lg"
+                placeholder="Reason for restoration"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={closeRestoreDialog}
+                disabled={actionLoading}
+                className="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRestore}
+                disabled={actionLoading}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {actionLoading ? 'Restoring...' : 'Restore'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Main Dashboard Component
+const Dashboard = () => {
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hasPaymentReturn = params.get('payment_return') === '1' || params.get('payment');
+    if (user?.role === 'student' && hasPaymentReturn) {
+      setActiveTab('subscription');
+    }
+  }, [user?.role]);
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        if (user?.role === 'student') return <StudentDashboard />;
+        if (user?.role === 'teacher') return <TeacherDashboard />;
+        if (user?.role === 'parent') return <ParentDashboard />;
+        if (user?.role === 'admin') return <AdminOverview />;
+        break;
+      case 'study':
+        return <StudyContent />;
+      case 'quiz':
+        return <QuizSystem />;
+      case 'dynamic-quiz':
+        return <DynamicQuiz />;
+      case 'ask':
+        return <AskAI />;
+      case 'create-content':
+        return <CreateContent />;
+      case 'create-quiz':
+        return <CreateQuiz />;
+      case 'students':
+        return <StudentsManagement />;
+      case 'children':
+        return <MyChildren />;
+      case 'progress':
+        return <ProgressReports />;
+      case 'subscription':
+        return <SubscriptionManagement />;
+      case 'learning-path':
+        return <PersonalizedLearning />;
+      case 'profile':
+        return <StudentProfile />;
+      case 'notes':
+        return <NotesManager />;
+      case 'my-pdfs':
+        return <StudentPDFManager />;
+      case 'upload-materials':
+        return <FileUpload />;
+      case 'whatsapp':
+        return <WhatsAppMonitor />;
+      case 'admin-users':
+        return <AdminUserManagement />;
+      case 'chat':
+        return <div className="p-6">Messages - Coming Soon (WhatsApp Integration)</div>;
+      default:
+        return <div className="p-6">Page not found</div>;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex">
+      <Sidebar 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        user={user}
+        isMobileOpen={isMobileOpen}
+        setIsMobileOpen={setIsMobileOpen}
+      />
+      
+      <div className="flex-1 lg:ml-0">
+        {/* Mobile Header */}
+        <div className="lg:hidden bg-white shadow-sm border-b px-4 py-3">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => setIsMobileOpen(true)}
+              className="p-2 hover:bg-gray-100 rounded-lg"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <h1 className="font-semibold">EduMate</h1>
+            <div className="w-10" /> {/* Spacer */}
+          </div>
+        </div>
+        
+        <main className="min-h-screen">
+          {renderContent()}
+        </main>
+      </div>
+    </div>
+  );
+};
+
+// Loading Component
+const Loading = () => (
+  <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 flex items-center justify-center">
+    <div className="text-center">
+      <div className="w-16 h-16 bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-pulse">
+        <Brain className="w-8 h-8 text-white" />
+      </div>
+      <p className="text-gray-600">Loading EduMate...</p>
+    </div>
+  </div>
+);
+
+// Main App Component
+function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/*" element={<AppContent />} />
+        </Routes>
+        <Toaster 
+          position="top-right"
+          toastOptions={{
+            duration: 4000,
+            style: {
+              background: '#fff',
+              color: '#363636',
+              borderRadius: '12px',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+            },
+          }}
+        />
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}
+
+const AppContent = () => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <Loading />;
+  }
+
+  return (
+    <Routes>
+      <Route 
+        path="/*" 
+        element={user ? <Dashboard /> : <Login />} 
+      />
+    </Routes>
+  );
+};
+
+export default App;
+
+
