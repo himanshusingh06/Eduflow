@@ -8,7 +8,7 @@ import { Bar, Line, Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
 import { User, BookOpen, GraduationCap, MessageSquare, BarChart3, MessageCircle, Settings, LogOut, Brain, Users, PenTool, Menu, X, Upload, ShieldCheck, Ban, Unlock, RefreshCcw } from 'lucide-react';
 import './App.css';
-
+import { TermsAndConditionsPage, PrivacyPolicyPage, RefundPolicyPage } from './pages/PolicyPages';
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
@@ -376,6 +376,38 @@ const Login = () => {
                 </button>
               </div>
             )}
+
+            {!isLogin && (
+              <div className="text-center text-xs text-gray-500 leading-6 pt-1">
+                <a
+                  href="/terms-and-conditions"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-emerald-600 hover:text-emerald-700 hover:underline"
+                >
+                  Terms and Conditions
+                </a>
+                <span className="mx-2 text-gray-400">|</span>
+                <a
+                  href="/privacy-policy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-emerald-600 hover:text-emerald-700 hover:underline"
+                >
+                  Privacy Policy
+                </a>
+                <span className="mx-2 text-gray-400">|</span>
+                <a
+                  href="/refund-policy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-emerald-600 hover:text-emerald-700 hover:underline"
+                >
+                  Refund Policy
+                </a>
+              </div>
+            )}
+
           </form>
         )}
 
@@ -5539,6 +5571,9 @@ const AppContent = () => {
 
   return (
     <Routes>
+      <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
+      <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+      <Route path="/refund-policy" element={<RefundPolicyPage />} />
       <Route 
         path="/*" 
         element={user ? <Dashboard /> : <Login />} 
