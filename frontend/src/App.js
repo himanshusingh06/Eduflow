@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useNavigate } from "react-router-dom";
@@ -6,9 +7,10 @@ import toast, { Toaster } from 'react-hot-toast';
 import edumatelogo from "./assets/edumale_logo.jpg" 
 import { Bar, Line, Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
-import { User, BookOpen, GraduationCap, MessageSquare, BarChart3, MessageCircle, Settings, LogOut, Brain, Users, PenTool, Menu, X, Upload, ShieldCheck, Ban, Unlock, RefreshCcw } from 'lucide-react';
+import { User, BookOpen, GraduationCap, BarChart3, Settings, LogOut, Brain, Users, PenTool, Menu, X, Upload, ShieldCheck, Ban, Unlock, RefreshCcw, MessageCircle } from 'lucide-react';
 import './App.css';
-
+import { TermsAndConditionsPage, PrivacyPolicyPage, RefundPolicyPage } from './pages/PolicyPages';
+import LandingPage from './pages/LandingPage';
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
@@ -75,8 +77,8 @@ const AuthProvider = ({ children }) => {
 
 
 
-const Login = () => {
-  const [isLogin, setIsLogin] = useState(true);
+const Login = ({ initialMode = "login" }) => {
+  const [isLogin, setIsLogin] = useState(initialMode !== "signup");
   const [isForgot, setIsForgot] = useState(false);
   const [isReset, setIsReset] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
@@ -100,6 +102,13 @@ const Login = () => {
 
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    setIsLogin(initialMode !== "signup");
+    setIsForgot(false);
+    setIsReset(initialMode === "reset");
+    setEmailSent(false);
+  }, [initialMode]);
 
   // -----------------------
   // HANDLE TOKEN FROM URL
@@ -133,7 +142,7 @@ const Login = () => {
       toast.error(err.response?.data?.detail || "Invalid or expired link");
     } finally {
       setIsVerifying(false);
-      window.history.replaceState({}, document.title, "/");
+      window.history.replaceState({}, document.title, "/login");
     }
   };
 
@@ -247,7 +256,7 @@ const Login = () => {
       toast.success("Password reset successful! You can now log in.");
       setIsReset(false);
       setIsLogin(true);
-      window.history.replaceState({}, document.title, "/");
+      window.history.replaceState({}, document.title, "/login");
       localStorage.removeItem("resetToken");
     } catch (err) {
       toast.error(err.response?.data?.detail || "Error resetting password");
@@ -376,6 +385,38 @@ const Login = () => {
                 </button>
               </div>
             )}
+
+            {!isLogin && (
+              <div className="text-center text-xs text-gray-500 leading-6 pt-1">
+                <a
+                  href="/terms-and-conditions"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-emerald-600 hover:text-emerald-700 hover:underline"
+                >
+                  Terms and Conditions
+                </a>
+                <span className="mx-2 text-gray-400">|</span>
+                <a
+                  href="/privacy-policy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-emerald-600 hover:text-emerald-700 hover:underline"
+                >
+                  Privacy Policy
+                </a>
+                <span className="mx-2 text-gray-400">|</span>
+                <a
+                  href="/refund-policy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-emerald-600 hover:text-emerald-700 hover:underline"
+                >
+                  Refund Policy
+                </a>
+              </div>
+            )}
+
           </form>
         )}
 
@@ -406,6 +447,7 @@ const Login = () => {
                 setEmailSent(false);
                 setIsLogin(true);
                 setIsForgot(false);
+                navigate("/login");
               }}
               className="block mx-auto text-gray-600 hover:text-emerald-700"
             >
@@ -443,7 +485,11 @@ const Login = () => {
             </button>
             <button
               type="button"
-              onClick={() => setIsLogin(true)}
+              onClick={() => {
+                setIsForgot(false);
+                setIsLogin(true);
+                navigate("/login");
+              }}
               className="text-sm text-gray-600 hover:text-emerald-700 text-center block mx-auto"
             >
               Back to Login
@@ -498,7 +544,11 @@ const Login = () => {
         {!isForgot && !isReset && !emailSent && (
           <div className="text-center mt-6">
             <button
-              onClick={() => setIsLogin(!isLogin)}
+              onClick={() => {
+                const nextIsLogin = !isLogin;
+                setIsLogin(nextIsLogin);
+                navigate(nextIsLogin ? "/login" : "/signup");
+              }}
               className="text-emerald-600 hover:text-emerald-700 font-medium transition-colors"
             >
               {isLogin
@@ -524,7 +574,6 @@ const Sidebar = ({ activeTab, setActiveTab, user, isMobileOpen, setIsMobileOpen 
   const getMenuItems = (role) => {
     const commonItems = [
       { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-      { id: 'chat', label: 'Messages', icon: MessageSquare },
     ];
     
     if (role === 'student') {
@@ -548,7 +597,7 @@ const Sidebar = ({ activeTab, setActiveTab, user, isMobileOpen, setIsMobileOpen 
         { id: 'create-content', label: 'Create Content', icon: BookOpen },
         { id: 'create-quiz', label: 'Create Quiz', icon: PenTool },
         { id: 'upload-materials', label: 'Upload Materials', icon: Upload },
-        { id: 'whatsapp', label: 'WhatsApp Monitor', icon: MessageCircle },
+        // { id: 'whatsapp', label: 'WhatsApp Monitor', icon: MessageCircle },
         { id: 'students', label: 'Students', icon: Users },
       ];
     }
@@ -5449,12 +5498,12 @@ const Dashboard = () => {
         return <StudentPDFManager />;
       case 'upload-materials':
         return <FileUpload />;
-      case 'whatsapp':
-        return <WhatsAppMonitor />;
+      // case 'whatsapp':
+      //   return <WhatsAppMonitor />;
       case 'admin-users':
         return <AdminUserManagement />;
-      case 'chat':
-        return <div className="p-6">Messages - Coming Soon (WhatsApp Integration)</div>;
+      // case 'chat':
+      //   return <div className="p-6">Messages - Coming Soon (WhatsApp Integration)</div>;
       default:
         return <div className="p-6">Page not found</div>;
     }
@@ -5539,14 +5588,19 @@ const AppContent = () => {
 
   return (
     <Routes>
-      <Route 
-        path="/*" 
-        element={user ? <Dashboard /> : <Login />} 
-      />
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
+      <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+      <Route path="/refund-policy" element={<RefundPolicyPage />} />
+      <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login initialMode="login" />} />
+      <Route path="/signup" element={user ? <Navigate to="/dashboard" replace /> : <Login initialMode="signup" />} />
+      <Route path="/verify-email/:token" element={user ? <Navigate to="/dashboard" replace /> : <Login initialMode="login" />} />
+      <Route path="/verify-reset-token/:token" element={user ? <Navigate to="/dashboard" replace /> : <Login initialMode="login" />} />
+      <Route path="/reset/:token" element={user ? <Navigate to="/dashboard" replace /> : <Login initialMode="reset" />} />
+      <Route path="/dashboard" element={user ? <Dashboard /> : <Navigate to="/login" replace />} />
+      <Route path="*" element={<Navigate to={user ? "/dashboard" : "/"} replace />} />
     </Routes>
   );
 };
 
 export default App;
-
-
