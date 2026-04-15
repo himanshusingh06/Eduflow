@@ -1,4 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, Query
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -6,7 +7,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timedelta
@@ -28,6 +29,7 @@ import json
 import httpx
 import re
 import asyncio
+import html
 from fastapi import APIRouter, HTTPException, status, Depends, Request
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
@@ -67,6 +69,11 @@ SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 EMAIL_USER = os.environ.get("EMAIL_USER")
 EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
+GOOGLE_SMTP_SERVER = os.environ.get("SMTP_SERVER", SMTP_SERVER)
+GOOGLE_SMTP_PORT = int(os.environ.get("SMTP_PORT", str(SMTP_PORT)))
+GOOGLE_SMTP_USER = os.environ.get("EMAIL_USER", EMAIL_USER or "")
+GOOGLE_SMTP_PASSWORD = os.environ.get("EMAIL_PASSWORD", EMAIL_PASSWORD or "")
+CONTACT_RECEIVER_EMAIL = os.environ.get("CONTACT_RECEIVER_EMAIL", GOOGLE_SMTP_USER or EMAIL_USER or "himanshuks062@gmail.com")
 
 # WhatsApp Configuration
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
@@ -498,6 +505,15 @@ class EmailReport(BaseModel):
     percentage: float
     evaluation_report: str
     recommendations: List[str]
+
+class ContactFormRequest(BaseModel):
+    full_name: str = Field(min_length=2, max_length=120)
+    email: EmailStr
+    phone: Optional[str] = Field(default=None, max_length=30)
+    role: str = Field(default="student", min_length=2, max_length=50)
+    institution: Optional[str] = Field(default=None, max_length=160)
+    subject: str = Field(min_length=3, max_length=160)
+    message: str = Field(min_length=3, max_length=4000)
 
 # Student PDF Upload Model  
 class StudentPDFUpload(BaseModel):
@@ -1182,6 +1198,180 @@ async def send_reset_email(email: str, reset_link: str):
         raise e
 
 # ======== Routes ========
+
+async def send_contact_form_email(contact_form: ContactFormRequest) -> None:
+    """Send a landing page contact request through Google SMTP."""
+    smtp_user = GOOGLE_SMTP_USER or EMAIL_USER
+    smtp_password = GOOGLE_SMTP_PASSWORD or EMAIL_PASSWORD
+    smtp_server = GOOGLE_SMTP_SERVER or SMTP_SERVER
+    smtp_port = GOOGLE_SMTP_PORT or SMTP_PORT
+    recipient_email = CONTACT_RECEIVER_EMAIL or smtp_user
+
+    if not smtp_user or not smtp_password or not recipient_email:
+        logging.error("Contact form email configuration is incomplete")
+        raise HTTPException(
+            status_code=500,
+            detail="Support email is not configured right now. Please try again later.",
+        )
+
+    role_label = contact_form.role.replace("_", " ").title()
+    institution = contact_form.institution or "Not provided"
+    phone = contact_form.phone or "Not provided"
+    safe_name = html.escape(contact_form.full_name)
+    safe_email = html.escape(contact_form.email)
+    safe_phone = html.escape(phone)
+    safe_role = html.escape(role_label)
+    safe_institution = html.escape(institution)
+    safe_subject = html.escape(contact_form.subject)
+    safe_message = html.escape(contact_form.message)
+
+    subject = f"[EduMate Contact] {contact_form.subject} - {role_label}"
+    plain_body = (
+        "New EduMate landing page inquiry\n\n"
+        f"Name: {contact_form.full_name}\n"
+        f"Email: {contact_form.email}\n"
+        f"Phone: {phone}\n"
+        f"Role: {role_label}\n"
+        f"Institution: {institution}\n"
+        f"Subject: {contact_form.subject}\n\n"
+        "Message:\n"
+        f"{contact_form.message}\n"
+    )
+    html_body = f"""
+    <html>
+      <body style="font-family:Arial,sans-serif;background:#f8fafc;color:#0f172a;padding:24px;">
+        <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #d1fae5;border-radius:18px;overflow:hidden;">
+          <div style="background:linear-gradient(135deg,#10b981,#0f766e);padding:24px;color:#ffffff;">
+            <h2 style="margin:0 0 6px 0;">New EduMate Contact Request</h2>
+            <p style="margin:0;opacity:0.92;">A visitor submitted the landing page contact form.</p>
+          </div>
+          <div style="padding:24px;">
+            <p style="margin:0 0 16px 0;"><strong>Name:</strong> {safe_name}</p>
+            <p style="margin:0 0 16px 0;"><strong>Email:</strong> {safe_email}</p>
+            <p style="margin:0 0 16px 0;"><strong>Phone:</strong> {safe_phone}</p>
+            <p style="margin:0 0 16px 0;"><strong>Role:</strong> {safe_role}</p>
+            <p style="margin:0 0 16px 0;"><strong>Institution:</strong> {safe_institution}</p>
+            <p style="margin:0 0 16px 0;"><strong>Subject:</strong> {safe_subject}</p>
+            <div style="margin-top:20px;padding:18px;background:#ecfdf5;border-radius:14px;border:1px solid #a7f3d0;">
+              <p style="margin:0 0 8px 0;font-weight:700;">Message</p>
+              <p style="margin:0;line-height:1.7;white-space:pre-wrap;">{safe_message}</p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+    """
+
+    message = MIMEMultipart("alternative")
+    message["Subject"] = subject
+    message["From"] = smtp_user
+    message["To"] = recipient_email
+    message["Reply-To"] = contact_form.email
+    message.attach(MIMEText(plain_body, "plain"))
+    message.attach(MIMEText(html_body, "html"))
+
+    try:
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.sendmail(smtp_user, recipient_email, message.as_string())
+        logging.info("Contact form email sent successfully for %s", contact_form.email)
+    except Exception as exc:
+        logging.error("Failed to send contact form email: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail="We could not send your message right now. Please try again in a little while.",
+        ) from exc
+
+
+def _format_contact_validation_errors(exc: ValidationError) -> list[dict[str, str]]:
+    def _friendly_error_message(field_name: str, error: dict[str, Any]) -> str:
+        error_type = str(error.get("type", ""))
+        raw_message = str(error.get("msg", "Invalid value."))
+        context = error.get("ctx") or {}
+
+        if "email" in field_name or "email" in error_type or "email" in raw_message.lower():
+            return "Please enter a valid email address."
+
+        if error_type in {"string_too_short", "too_short"}:
+            min_length = context.get("min_length")
+            if isinstance(min_length, int):
+                return f"Please enter at least {min_length} characters."
+            return "This value is too short."
+
+        if error_type in {"string_too_long", "too_long"}:
+            max_length = context.get("max_length")
+            if isinstance(max_length, int):
+                return f"Please keep this under {max_length} characters."
+            return "This value is too long."
+
+        if error_type in {"missing", "string_type"}:
+            return "This field is required."
+
+        return raw_message
+
+    formatted_errors = []
+    for error in exc.errors():
+        loc = error.get("loc", ())
+        field_name = next((str(part) for part in reversed(loc) if part != "body"), "form")
+        friendly_message = _friendly_error_message(field_name, error)
+        formatted_errors.append(
+            {
+                "field": field_name,
+                "message": friendly_message,
+            }
+        )
+    return formatted_errors
+
+
+@api_router.post("/contact")
+async def submit_contact_form(request: Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "detail": "We could not read the contact form submission. Please refresh the page and try again.",
+                "errors": [],
+            },
+        )
+
+    if not isinstance(payload, dict):
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": "Please fill out the contact form correctly and try again.",
+                "errors": [{"field": "form", "message": "Invalid contact form payload."}],
+            },
+        )
+
+    normalized_payload = {
+        "full_name": str(payload.get("full_name", "")).strip(),
+        "email": str(payload.get("email", "")).strip(),
+        "phone": str(payload.get("phone", "")).strip(),
+        "role": str(payload.get("role", "student")).strip().lower() or "student",
+        "institution": str(payload.get("institution", "")).strip(),
+        "subject": str(payload.get("subject", "")).strip(),
+        "message": str(payload.get("message", "")).strip(),
+    }
+
+    try:
+        contact_form = ContactFormRequest.model_validate(normalized_payload)
+    except ValidationError as exc:
+        errors = _format_contact_validation_errors(exc)
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": errors[0]["message"] if errors else "Please review the contact form fields and try again.",
+                "errors": errors,
+            },
+        )
+
+    await send_contact_form_email(contact_form)
+    return {
+        "message": "Thank you for reaching out. Your message has been sent to our support team.",
+    }
 
 @api_router.post("/auth/forgot-password")
 async def forgot_password(data: ForgotPasswordRequest):
